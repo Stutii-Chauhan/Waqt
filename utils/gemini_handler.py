@@ -3,7 +3,7 @@ import google.generativeai as genai
 import pandas as pd
 import json
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+GEMINI_API_KEY = "AIzaSyBFyEAHugwBJ-yIVE3bWy7vDdomGeaY-Ss"
 genai.configure(api_key=GEMINI_API_KEY)
 
 def get_prompt_response(df: pd.DataFrame, user_prompt: str) -> pd.DataFrame:
