@@ -8,18 +8,20 @@ genai.configure(api_key=GEMINI_API_KEY)
 
 def get_prompt_response(df: pd.DataFrame, user_prompt: str) -> pd.DataFrame:
     prompt = f"""
-You are a data transformation agent. A user has uploaded a file and given a request.
-User Request: {user_prompt}
+You are a smart data transformation agent.
 
-The file has the following structure (first 10 rows):
+A user uploaded a file with the following structure:
+
 {df.head(10).to_string(index=False)}
 
-Based on the request and this data, return a JSON list of rows with fields:
-- gender_category
-- region
-- product_category
+User instruction:
+\"{user_prompt}\"
 
-Assume missing values as required. If product_category is not in the data, infer it from the prompt.
+Please infer what each row and column represents, and return a structured table in JSON format where each row contains:
+- All relevant metadata fields (e.g., gender_category, region, product_category, fiscal_year, etc.)
+- No unnecessary fields
+
+Return only the JSON list.
 """
     model = genai.GenerativeModel("gemini-pro")
     response = model.generate_content(prompt)
