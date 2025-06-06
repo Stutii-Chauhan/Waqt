@@ -2,4 +2,5 @@ streamlit
 pandas
 openpyxl
 supabase
+python-dotenv
 google-generativeai
