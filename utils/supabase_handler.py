@@ -11,11 +11,15 @@ def fetch_sales_data(df: pd.DataFrame) -> pd.DataFrame:
     results = []
 
     for _, row in df.iterrows():
-        match_criteria = {
-            "gender_category": row["gender_category"],
-            "region": row["region"],
-            "product_category": row["product_category"]
-        }
+        match_criteria = {}
+        for col in ["gender_category", "region", "product_category", "fiscal_year"]:
+            if col in row and pd.notna(row[col]):
+                match_criteria[col] = row[col]
+
+        if not match_criteria:
+            results.append({**row, "sales": None})
+            continue
+
         response = supabase.table("Sales_Category_Gender_Region").select("*").match(match_criteria).execute()
         sales = response.data[0]["sales"] if response.data else None
         results.append({**row, "sales": sales})
