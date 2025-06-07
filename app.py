@@ -22,7 +22,7 @@ if not SUPABASE_URL or not SUPABASE_KEY or not GEMINI_API_KEY:
 # --- Init Supabase and Gemini ---
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel("models/gemini-pro")
+model = genai.GenerativeModel("gemini-2.0-flash")
 
 # --- Streamlit UI ---
 st.title("📊 LLM-Powered Excel Updater")
