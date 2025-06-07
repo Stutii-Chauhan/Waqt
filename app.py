@@ -7,7 +7,7 @@ import google.generativeai as genai
 import json
 import re
 
-st.set_page_config(page_title="LLM Excel Auto-Updater", layout="wide")
+st.set_page_config(page_title="Excel Auto-Updater for Waqt", layout="wide")
 
 # --- Load environment variables from Streamlit Secrets ---
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
@@ -25,9 +25,9 @@ genai.configure(api_key=GEMINI_API_KEY)
 model = genai.GenerativeModel("gemini-2.0-flash")
 
 # --- Streamlit UI ---
-st.title("📊 LLM-Powered Excel Updater")
+st.title("Enhancement for Waqt")
 
-user_query = st.text_input("🔎 What should I fill in? (e.g., Sales for Eyewear category)")
+user_query = st.text_input("What should I fill in? (e.g., Sales for Eyewear category)")
 uploaded_file = st.file_uploader("Upload your Excel file", type=["xlsx"])
 
 if uploaded_file and user_query:
@@ -38,19 +38,19 @@ if uploaded_file and user_query:
     df = sheets[selected_sheet]
 
     if df.empty:
-        st.warning("⚠️ Selected sheet is empty.")
+        st.warning("Selected sheet is empty.")
         st.stop()
 
-    st.subheader(f"🔍 Preview: {selected_sheet}")
+    st.subheader(f"Preview: {selected_sheet}")
     st.dataframe(df)
 
     row_header = df.columns[0]
     df_long = df.melt(id_vars=[row_header], var_name="ColumnHeader", value_name="Value")
     df_long.rename(columns={row_header: "RowHeader"}, inplace=True)
 
-    st.markdown("### 🤖 Sending structure + prompt to Gemini...")
+    st.markdown("### Sending structure + prompt to Gemini...")
 
-    sample = df_long.head(5)
+    #sample = df_long.head(5)
     available_tables = """
     Sales_Category_Gender_Region: [Gender Category, Region, Product Category, Sales]
     """
@@ -123,7 +123,7 @@ Return JSON in this format:
 
     updated_df = df_long.pivot(index="RowHeader", columns="ColumnHeader", values=mapping["value_column"]).reset_index()
     st.subheader("✅ Updated Excel")
-    st.dataframe(updated_df)
+    #st.dataframe(updated_df)
 
     # --- Download ---
     def to_excel_download(df):
