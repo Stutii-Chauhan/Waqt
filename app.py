@@ -81,12 +81,13 @@ Return JSON in this format:
         query = (
             supabase.table(mapping["table"])
             .select(mapping["value_column"])
-            .eq(mapping["row_header_column"], str(row_val).strip())
-            .eq(mapping["column_header_column"], str(col_val).strip())
+            .eq(mapping["row_header_column"], str(row_val).strip().title())
+            .eq(mapping["column_header_column"], str(col_val).strip().title())
+
         )
         if "filters" in mapping:
             for k, v in mapping["filters"].items():
-                query = query.eq(k, str(v).strip())
+                query = query.eq(k, str(v).strip().title())
 
         res = query.execute()
         if res.data:
