@@ -123,7 +123,7 @@ Return JSON in this format:
 
     updated_df = df_long.pivot(index="RowHeader", columns="ColumnHeader", values=mapping["value_column"]).reset_index()
     st.subheader("✅ Updated Excel")
-    #st.dataframe(updated_df)
+    st.dataframe(updated_df)
 
     # --- Download ---
     def to_excel_download(df):
