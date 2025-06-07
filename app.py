@@ -5,6 +5,8 @@ import os
 from supabase import create_client
 import google.generativeai as genai
 
+st.write("Available secrets:", list(st.secrets.keys()))
+
 # --- Load environment variables ---
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
