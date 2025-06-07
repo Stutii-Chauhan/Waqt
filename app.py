@@ -37,6 +37,10 @@ if uploaded_file and user_query:
     selected_sheet = st.selectbox("📑 Select a sheet to process", sheet_names)
     df = sheets[selected_sheet]
 
+    if df.empty:
+        st.warning("⚠️ Selected sheet is empty.")
+        st.stop()
+
     st.subheader(f"🔍 Preview: {selected_sheet}")
     st.dataframe(df)
 
