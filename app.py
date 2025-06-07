@@ -48,7 +48,10 @@ if uploaded_file and user_query:
     df_long = df.melt(id_vars=[row_header], var_name="ColumnHeader", value_name="Value")
     df_long.rename(columns={row_header: "RowHeader"}, inplace=True)
 
-    st.markdown("### Sending structure + prompt to Gemini...")
+    with st.spinner("🤖 Sending structure + prompt to Gemini..."):
+        response = model.generate_content(prompt)
+
+    st.success("Prompt processed by Gemini!")
 
     sample = df_long.head(5)
     available_tables = """
