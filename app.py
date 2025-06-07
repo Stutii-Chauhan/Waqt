@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 from io import BytesIO
+import os
 from supabase import create_client
 import google.generativeai as genai
 import json
@@ -13,8 +14,9 @@ SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
 
+# --- Fail fast if secrets missing ---
 if not SUPABASE_URL or not SUPABASE_KEY or not GEMINI_API_KEY:
-    st.error("❌ Missing Supabase or Gemini credentials.")
+    st.error("❌ Missing Supabase or Gemini credentials. Set SUPABASE_URL, SUPABASE_KEY, GEMINI_API_KEY.")
     st.stop()
 
 # --- Init Supabase and Gemini ---
@@ -46,6 +48,11 @@ if uploaded_file and user_query:
     df_long = df.melt(id_vars=[row_header], var_name="ColumnHeader", value_name="Value")
     df_long.rename(columns={row_header: "RowHeader"}, inplace=True)
 
+    with st.spinner("🤖 Sending structure + prompt to Gemini..."):
+        response = model.generate_content(prompt)
+
+    st.success("Prompt processed by Gemini!")
+
     sample = df_long.head(5)
     available_tables = """
     Sales_Category_Gender_Region: [Gender Category, Region, Product Category, Sales]
@@ -71,19 +78,19 @@ Return JSON in this format:
   "filters": {{ optional key-value filters like "Product Category": "Eyewear" }}
 }}
     """
-
-    with st.spinner("🤖 Sending structure + prompt to Gemini..."):
-        response = model.generate_content(prompt)
+    response = model.generate_content(prompt)
+    #st.code(response.text, language='json')
 
     try:
         cleaned_json = re.sub(r"^```json|```$", "", response.text.strip(), flags=re.MULTILINE).strip()
         mapping = json.loads(cleaned_json)
         mapping["table"] = "sales_category_gender_region"
-        st.success("✅ Prompt processed by Gemini!")
+        
     except:
         st.error("Gemini returned invalid JSON. Please check prompt.")
         st.stop()
 
+    # --- Fill values from Supabase ---
     def fetch_value(row_val, col_val):
         query = (
             supabase.table(mapping["table"])
@@ -100,15 +107,28 @@ Return JSON in this format:
             return sum([r[mapping["value_column"]] for r in res.data])
         return None
 
+    # # 🧪 Check if Supabase returns any data without filters
+    # st.markdown("### 🧪 Sanity Check: Preview Raw Supabase Data")
+
+    # try:
+    #     test_query = supabase.table(mapping["table"]).select("*").limit(10).execute()
+    #     if test_query.data:
+    #         st.success("✅ Supabase data fetched successfully")
+    #         st.dataframe(pd.DataFrame(test_query.data))
+    #     else:
+    #         st.warning("⚠️ Supabase returned 0 rows. Table may be empty or misnamed.")
+    # except Exception as e:
+    #     st.error(f"❌ Error fetching Supabase data: {e}")
+
     df_long[mapping["value_column"]] = df_long.apply(
         lambda row: fetch_value(row["RowHeader"], row["ColumnHeader"]), axis=1
     )
 
     updated_df = df_long.pivot(index="RowHeader", columns="ColumnHeader", values=mapping["value_column"]).reset_index()
-
     st.subheader("✅ Updated Excel")
     st.dataframe(updated_df)
 
+    # --- Download ---
     def to_excel_download(df):
         output = BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
