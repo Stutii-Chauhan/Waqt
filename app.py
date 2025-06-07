@@ -94,6 +94,22 @@ Return JSON in this format:
             return sum([r[mapping["value_column"]] for r in res.data])
         return None
 
+    # 🧪 Check if Supabase returns any data without filters
+    st.markdown("### 🧪 Sanity Check: Preview Raw Supabase Data")
+    
+    try:
+        test_query = supabase.table(mapping["table"]).select("*").limit(10).execute()
+        if test_query.data:
+            st.success("✅ Supabase data fetched successfully")
+            st.dataframe(pd.DataFrame(test_query.data))
+        else:
+            st.warning("⚠️ Supabase returned 0 rows. Table may be empty or misnamed.")
+    except Exception as e:
+        st.error(f"❌ Error fetching Supabase data: {e}")
+
+
+
+    
     df_long[mapping["value_column"]] = df_long.apply(
         lambda row: fetch_value(row["RowHeader"], row["ColumnHeader"]), axis=1
     )
