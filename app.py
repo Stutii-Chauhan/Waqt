@@ -4,16 +4,14 @@ from io import BytesIO
 import os
 from supabase import create_client
 import google.generativeai as genai
+import json
 
 st.set_page_config(page_title="LLM Excel Auto-Updater", layout="wide")
 
-st.write("Available secrets:", list(st.secrets.keys()))
-
-# --- Load environment variables ---
+# --- Load environment variables from Streamlit Secrets ---
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
-
 
 # --- Fail fast if secrets missing ---
 if not SUPABASE_URL or not SUPABASE_KEY or not GEMINI_API_KEY:
@@ -26,7 +24,6 @@ genai.configure(api_key=GEMINI_API_KEY)
 model = genai.GenerativeModel("gemini-pro")
 
 # --- Streamlit UI ---
-
 st.title("📊 LLM-Powered Excel Updater")
 
 uploaded_file = st.file_uploader("Upload your Excel file", type=["xlsx"])
@@ -50,7 +47,7 @@ if uploaded_file:
 You are a smart assistant that maps Excel structures to database tables.
 
 Excel DataFrame (melted format):
-{sample.to_markdown(index=False)}
+{sample.to_csv(index=False)}
 
 Available tables:
 {available_tables}
@@ -67,7 +64,6 @@ Return JSON in this format:
     st.code(response.text, language='json')
 
     try:
-        import json
         mapping = json.loads(response.text)
     except:
         st.error("Gemini returned invalid JSON. Please check prompt.")
