@@ -8,9 +8,10 @@ import google.generativeai as genai
 st.write("Available secrets:", list(st.secrets.keys()))
 
 # --- Load environment variables ---
-SUPABASE_URL = os.environ.get("SUPABASE_URL")
-SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+SUPABASE_URL = st.secrets["SUPABASE_URL"]
+SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
+GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
+
 
 # --- Fail fast if secrets missing ---
 if not SUPABASE_URL or not SUPABASE_KEY or not GEMINI_API_KEY:
