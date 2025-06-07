@@ -50,7 +50,7 @@ if uploaded_file and user_query:
 
     st.markdown("### Sending structure + prompt to Gemini...")
 
-    #sample = df_long.head(5)
+    sample = df_long.head(5)
     available_tables = """
     Sales_Category_Gender_Region: [Gender Category, Region, Product Category, Sales]
     """
