@@ -27,9 +27,10 @@ model = genai.GenerativeModel("gemini-2.0-flash")
 # --- Streamlit UI ---
 st.title("📊 LLM-Powered Excel Updater")
 
+user_query = st.text_input("🔎 What should I fill in? (e.g., Sales for Eyewear category)")
 uploaded_file = st.file_uploader("Upload your Excel file", type=["xlsx"])
 
-if uploaded_file:
+if uploaded_file and user_query:
     df = pd.read_excel(uploaded_file)
     st.subheader("🔍 Uploaded File Preview")
     st.dataframe(df)
@@ -38,7 +39,7 @@ if uploaded_file:
     df_long = df.melt(id_vars=[row_header], var_name="ColumnHeader", value_name="Value")
     df_long.rename(columns={row_header: "RowHeader"}, inplace=True)
 
-    st.markdown("### 🤖 Sending structure to Gemini...")
+    st.markdown("### 🤖 Sending structure + prompt to Gemini...")
 
     sample = df_long.head(5)
     available_tables = """
@@ -46,6 +47,9 @@ if uploaded_file:
     """
     prompt = f"""
 You are a smart assistant that maps Excel structures to database tables.
+
+User Query:
+{user_query}
 
 Excel DataFrame (melted format):
 {sample.to_csv(index=False)}
@@ -58,7 +62,8 @@ Return JSON in this format:
   "table": "...",
   "row_header_column": "...",
   "column_header_column": "...",
-  "value_column": "..."
+  "value_column": "...",
+  "filters": {{ optional key-value filters like "Product Category": "Eyewear" }}
 }}
     """
     response = model.generate_content(prompt)
@@ -73,15 +78,19 @@ Return JSON in this format:
 
     # --- Fill values from Supabase ---
     def fetch_value(row_val, col_val):
-        res = (
+        query = (
             supabase.table(mapping["table"])
             .select(mapping["value_column"])
-            .eq(mapping["row_header_column"], row_val)
-            .eq(mapping["column_header_column"], col_val)
-            .execute()
+            .eq(mapping["row_header_column"], str(row_val).strip())
+            .eq(mapping["column_header_column"], str(col_val).strip())
         )
-        if res.data and len(res.data) > 0:
-            return res.data[0][mapping["value_column"]]
+        if "filters" in mapping:
+            for k, v in mapping["filters"].items():
+                query = query.eq(k, str(v).strip())
+
+        res = query.execute()
+        if res.data:
+            return sum([r[mapping["value_column"]] for r in res.data])
         return None
 
     df_long[mapping["value_column"]] = df_long.apply(
