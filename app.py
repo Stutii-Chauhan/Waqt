@@ -5,6 +5,8 @@ import os
 from supabase import create_client
 import google.generativeai as genai
 
+st.set_page_config(page_title="LLM Excel Auto-Updater", layout="wide")
+
 st.write("Available secrets:", list(st.secrets.keys()))
 
 # --- Load environment variables ---
@@ -24,7 +26,7 @@ genai.configure(api_key=GEMINI_API_KEY)
 model = genai.GenerativeModel("gemini-pro")
 
 # --- Streamlit UI ---
-st.set_page_config(page_title="LLM Excel Auto-Updater", layout="wide")
+
 st.title("📊 LLM-Powered Excel Updater")
 
 uploaded_file = st.file_uploader("Upload your Excel file", type=["xlsx"])
