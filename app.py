@@ -75,17 +75,15 @@ Return JSON in this format:
     with st.spinner("🤖 Sending structure + prompt to Gemini..."):
         response = model.generate_content(prompt)
 
-    st.success("✅ Prompt processed by Gemini!")
-
     try:
         cleaned_json = re.sub(r"^```json|```$", "", response.text.strip(), flags=re.MULTILINE).strip()
         mapping = json.loads(cleaned_json)
         mapping["table"] = "sales_category_gender_region"
+        st.success("✅ Prompt processed by Gemini!")
     except:
         st.error("Gemini returned invalid JSON. Please check prompt.")
         st.stop()
 
-    # --- Fetch values from Supabase ---
     def fetch_value(row_val, col_val):
         query = (
             supabase.table(mapping["table"])
