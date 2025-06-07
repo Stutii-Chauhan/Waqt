@@ -72,6 +72,8 @@ Return JSON in this format:
     try:
         cleaned_json = re.sub(r"^```json|```$", "", response.text.strip(), flags=re.MULTILINE).strip()
         mapping = json.loads(cleaned_json)
+        mapping["table"] = "sales_category_gender_region"
+        
     except:
         st.error("Gemini returned invalid JSON. Please check prompt.")
         st.stop()
