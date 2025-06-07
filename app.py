@@ -31,8 +31,13 @@ user_query = st.text_input("🔎 What should I fill in? (e.g., Sales for Eyewear
 uploaded_file = st.file_uploader("Upload your Excel file", type=["xlsx"])
 
 if uploaded_file and user_query:
-    df = pd.read_excel(uploaded_file)
-    st.subheader("🔍 Uploaded File Preview")
+    # Read all sheets
+    sheets = pd.read_excel(uploaded_file, sheet_name=None)
+    sheet_names = list(sheets.keys())
+    selected_sheet = st.selectbox("📑 Select a sheet to process", sheet_names)
+    df = sheets[selected_sheet]
+
+    st.subheader(f"🔍 Preview: {selected_sheet}")
     st.dataframe(df)
 
     row_header = df.columns[0]
@@ -85,7 +90,6 @@ Return JSON in this format:
             .select(mapping["value_column"])
             .eq(mapping["row_header_column"], str(row_val).strip().title())
             .eq(mapping["column_header_column"], str(col_val).strip().title())
-
         )
         if "filters" in mapping:
             for k, v in mapping["filters"].items():
@@ -98,7 +102,7 @@ Return JSON in this format:
 
     # 🧪 Check if Supabase returns any data without filters
     st.markdown("### 🧪 Sanity Check: Preview Raw Supabase Data")
-    
+
     try:
         test_query = supabase.table(mapping["table"]).select("*").limit(10).execute()
         if test_query.data:
@@ -109,9 +113,6 @@ Return JSON in this format:
     except Exception as e:
         st.error(f"❌ Error fetching Supabase data: {e}")
 
-
-
-    
     df_long[mapping["value_column"]] = df_long.apply(
         lambda row: fetch_value(row["RowHeader"], row["ColumnHeader"]), axis=1
     )
