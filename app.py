@@ -48,11 +48,6 @@ if uploaded_file and user_query:
     df_long = df.melt(id_vars=[row_header], var_name="ColumnHeader", value_name="Value")
     df_long.rename(columns={row_header: "RowHeader"}, inplace=True)
 
-    with st.spinner("🤖 Sending structure + prompt to Gemini..."):
-        response = model.generate_content(prompt)
-
-    st.success("Prompt processed by Gemini!")
-
     sample = df_long.head(5)
     available_tables = """
     Sales_Category_Gender_Region: [Gender Category, Region, Product Category, Sales]
@@ -78,8 +73,10 @@ Return JSON in this format:
   "filters": {{ optional key-value filters like "Product Category": "Eyewear" }}
 }}
     """
-    response = model.generate_content(prompt)
-    #st.code(response.text, language='json')
+    with st.spinner("🤖 Sending structure + prompt to Gemini..."):
+        response = model.generate_content(prompt)
+
+    st.success("✅ Prompt processed by Gemini!")
 
     try:
         cleaned_json = re.sub(r"^```json|```$", "", response.text.strip(), flags=re.MULTILINE).strip()
