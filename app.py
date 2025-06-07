@@ -5,6 +5,7 @@ import os
 from supabase import create_client
 import google.generativeai as genai
 import json
+import re
 
 st.set_page_config(page_title="LLM Excel Auto-Updater", layout="wide")
 
@@ -21,7 +22,7 @@ if not SUPABASE_URL or not SUPABASE_KEY or not GEMINI_API_KEY:
 # --- Init Supabase and Gemini ---
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel("gemini-2.0-flash")
+model = genai.GenerativeModel("models/gemini-pro")
 
 # --- Streamlit UI ---
 st.title("📊 LLM-Powered Excel Updater")
@@ -64,7 +65,8 @@ Return JSON in this format:
     st.code(response.text, language='json')
 
     try:
-        mapping = json.loads(response.text)
+        cleaned_json = re.sub(r"^```json|```$", "", response.text.strip(), flags=re.MULTILINE).strip()
+        mapping = json.loads(cleaned_json)
     except:
         st.error("Gemini returned invalid JSON. Please check prompt.")
         st.stop()
