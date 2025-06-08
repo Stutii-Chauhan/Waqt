@@ -32,7 +32,7 @@ uploaded_file = st.file_uploader("Upload your Excel file", type=["xlsx"])
 if uploaded_file:
     sheets = pd.read_excel(uploaded_file, sheet_name=None)
     sheet_names = list(sheets.keys())
-    selected_sheet = st.selectbox("📑 Select a sheet to process", sheet_names)
+    selected_sheet = st.selectbox("Select a sheet to process", sheet_names)
     df = sheets[selected_sheet]
 
     if df.empty:
@@ -77,7 +77,7 @@ Return JSON in this format:
 }}
             """
 
-            with st.spinner("🤖 Sending structure + prompt to Gemini..."):
+            with st.spinner(" Sending structure + prompt to Gemini..."):
                 response = model.generate_content(prompt)
 
             st.success("✅ Prompt processed by Gemini!")
