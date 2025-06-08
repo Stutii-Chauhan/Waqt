@@ -53,7 +53,7 @@ if uploaded_file:
             sample = df_long.head(5)
             available_tables = """
             sales_category_gender_region: [Gender Category, Region, Product Category, Sales]
-            region_quarter_category_sales: [Region, Quarter, Product Category, Sales]
+            region_quarter_category_sales: [Region, Fiscal Quarter, Product Category, Sales]
             """
             prompt = f"""
 You are a smart assistant that maps Excel structures to database tables.
