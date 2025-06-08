@@ -93,15 +93,20 @@ Return JSON in this format:
 
             # --- Fill values from Supabase ---
             def fetch_value(row_val, col_val):
+                # Normalize column keys to lowercase for Supabase
+                value_col = mapping["value_column"].lower()
+                row_col = mapping["row_header_column"].lower()
+                col_col = mapping["column_header_column"].lower()
+                
                 query = (
                     supabase.table(mapping["table"])
-                    .select(mapping["value_column"])
-                    .eq(mapping["row_header_column"], str(row_val).strip().title())
-                    .eq(mapping["column_header_column"], str(col_val).strip().title())
+                    .select(value_col)
+                    .eq(row_col, str(row_val).strip().title())
+                    .eq(col_col, str(col_val).strip().title())
                 )
                 if "filters" in mapping:
                     for k, v in mapping["filters"].items():
-                        query = query.eq(k, str(v).strip().title())
+                        query = query.eq(k.lower(), str(v).strip().title())
 
                 try:
                     st.warning(f"Querying table: {mapping['table']}, Row: {row_val}, Col: {col_val}")
@@ -111,7 +116,7 @@ Return JSON in this format:
                     return None
 
                 if res.data:
-                    return sum([r[mapping["value_column"]] for r in res.data])
+                    return sum([r[value_col] for r in res.data])
                 return None
 
             df_long[mapping["value_column"]] = df_long.apply(
