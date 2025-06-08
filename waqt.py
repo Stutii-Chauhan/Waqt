@@ -108,6 +108,11 @@ Return JSON in this format:
                 except Exception as e:
                     st.error(f"❌ Supabase query failed: {e}")
                     return None
+                
+                if res.data:
+                    return sum([r[mapping["value_column"]] for r in res.data])
+                return None
+
 
             # ✅ Log table being queried just once
             st.warning(f"Querying table: {mapping['table']}")
