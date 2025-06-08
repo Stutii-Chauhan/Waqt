@@ -104,16 +104,15 @@ Return JSON in this format:
                         query = query.eq(k, str(v).strip().title())
 
                 try:
-                    st.warning(f"Querying table: {mapping['table']}, Row: {row_val}, Col: {col_val}")
                     res = query.execute()
                 except Exception as e:
                     st.error(f"❌ Supabase query failed: {e}")
                     return None
 
-                if res.data:
-                    return sum([r[mapping["value_column"]] for r in res.data])
-                return None
-
+            # ✅ Log table being queried just once
+            st.warning(f"Querying table: {mapping['table']}")
+            
+            # Apply the function across rows
             df_long[mapping["value_column"]] = df_long.apply(
                 lambda row: fetch_value(row["RowHeader"], row["ColumnHeader"]), axis=1
             )
