@@ -1,0 +1,138 @@
+import streamlit as st
+import pandas as pd
+from io import BytesIO
+import os
+from supabase import create_client
+import google.generativeai as genai
+import json
+import re
+
+st.set_page_config(page_title="Excel Auto-Updater for Waqt", layout="wide")
+
+# --- Load environment variables from Streamlit Secrets ---
+SUPABASE_URL = st.secrets["SUPABASE_URL"]
+SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
+GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
+
+# --- Fail fast if secrets missing ---
+if not SUPABASE_URL or not SUPABASE_KEY or not GEMINI_API_KEY:
+    st.error("❌ Missing Supabase or Gemini credentials.")
+    st.stop()
+
+# --- Init Supabase and Gemini ---
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+genai.configure(api_key=GEMINI_API_KEY)
+model = genai.GenerativeModel("gemini-2.0-flash")
+
+# --- Streamlit UI ---
+st.title("Enhancement for Waqt")
+
+uploaded_file = st.file_uploader("Upload your Excel file", type=["xlsx"])
+
+if uploaded_file:
+    sheets = pd.read_excel(uploaded_file, sheet_name=None)
+    sheet_names = list(sheets.keys())
+    selected_sheet = st.selectbox("📑 Select a sheet to process", sheet_names)
+    df = sheets[selected_sheet]
+
+    if df.empty:
+        st.warning("Selected sheet is empty.")
+        st.stop()
+
+    st.subheader(f"Preview: {selected_sheet}")
+    st.dataframe(df)
+
+    user_query = st.text_input("What should I fill in? (e.g., Sales for Eyewear category)")
+
+    if user_query:
+        if st.button("Start"):
+            row_header = df.columns[0]
+            df_long = df.melt(id_vars=[row_header], var_name="ColumnHeader", value_name="Value")
+            df_long.rename(columns={row_header: "RowHeader"}, inplace=True)
+
+            sample = df_long.head(5)
+            available_tables = """
+            sales_category_gender_region: [Gender Category, Region, Product Category, Sales]
+            region_quarter_category_sales: [Region, Quarter, Product Category, Sales]
+            """
+            prompt = f"""
+You are a smart assistant that maps Excel structures to database tables.
+
+User Query:
+{user_query}
+
+Excel DataFrame (melted format):
+{sample.to_csv(index=False)}
+
+Available tables:
+{available_tables}
+
+Return JSON in this format:
+{{
+  "table": "...",
+  "row_header_column": "...",
+  "column_header_column": "...",
+  "value_column": "...",
+  "filters": {{ optional key-value filters like "Product Category": "Eyewear", "Quarter": "Q1" }}
+}}
+            """
+
+            with st.spinner("🤖 Sending structure + prompt to Gemini..."):
+                response = model.generate_content(prompt)
+
+            st.success("✅ Prompt processed by Gemini!")
+
+            try:
+                cleaned_json = re.sub(r"^```json|```$", "", response.text.strip(), flags=re.MULTILINE).strip()
+                mapping = json.loads(cleaned_json)
+                st.info(f"Using Supabase table: `{mapping['table']}`")
+                st.json(mapping)
+            except Exception:
+                st.error("Gemini returned invalid JSON. Please check prompt.")
+                st.stop()
+
+            # --- Fill values from Supabase ---
+            def fetch_value(row_val, col_val):
+                query = (
+                    supabase.table(mapping["table"])
+                    .select(mapping["value_column"])
+                    .eq(mapping["row_header_column"], str(row_val).strip().title())
+                    .eq(mapping["column_header_column"], str(col_val).strip().title())
+                )
+                if "filters" in mapping:
+                    for k, v in mapping["filters"].items():
+                        query = query.eq(k, str(v).strip().title())
+
+                try:
+                    st.warning(f"Querying table: {mapping['table']}, Row: {row_val}, Col: {col_val}")
+                    res = query.execute()
+                except Exception as e:
+                    st.error(f"❌ Supabase query failed: {e}")
+                    return None
+
+                if res.data:
+                    return sum([r[mapping["value_column"]] for r in res.data])
+                return None
+
+            df_long[mapping["value_column"]] = df_long.apply(
+                lambda row: fetch_value(row["RowHeader"], row["ColumnHeader"]), axis=1
+            )
+
+            updated_df = df_long.pivot(index="RowHeader", columns="ColumnHeader", values=mapping["value_column"]).reset_index()
+
+            st.subheader("✅ Updated Excel")
+            st.dataframe(updated_df)
+
+            # --- Download ---
+            def to_excel_download(df):
+                output = BytesIO()
+                with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                    df.to_excel(writer, index=False)
+                return output.getvalue()
+
+            st.download_button(
+                label="📥 Download Updated Excel",
+                data=to_excel_download(updated_df),
+                file_name="updated_sales.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
