@@ -150,7 +150,15 @@ if uploaded_file:
     prompts = []
     for i, table in enumerate(tables):
         st.subheader(f"🧾 Table {i+1}")
-        st.dataframe(table)
+    
+        if len(table) > 1:
+            display_df = table.copy()
+            display_df.columns = display_df.iloc[0]
+            display_df = display_df[1:].reset_index(drop=True)
+            st.dataframe(display_df)
+        else:
+            st.dataframe(table)
+    
         prompt = st.text_input(f"Prompt for Table {i+1}", key=f"prompt_{i}")
         prompts.append(prompt)
 
