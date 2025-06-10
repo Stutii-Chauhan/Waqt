@@ -45,8 +45,10 @@ def split_dataframe_by_blank_rows(df):
 
 # --- Utility: Gemini + Supabase processing ---
 def process_table(df_partial, user_query):
-    df_partial.columns = df_partial.iloc[0]  # set first row as header
+    df_partial = df_partial.dropna(axis=1, how="all")
+    df_partial.columns = df_partial.iloc[0]
     df_partial = df_partial[1:].reset_index(drop=True)
+    df_partial.columns = df_partial.columns.astype(str).str.strip()
     row_header = df_partial.columns[0]
     df_long = df_partial.melt(id_vars=[row_header], var_name="ColumnHeader", value_name="Value")
     df_long.rename(columns={row_header: "RowHeader"}, inplace=True)
