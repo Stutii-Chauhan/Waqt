@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 from io import BytesIO
-import os
 from supabase import create_client
 import google.generativeai as genai
 import json
@@ -14,41 +13,41 @@ SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
 
-# --- Fail fast if secrets missing ---
 if not SUPABASE_URL or not SUPABASE_KEY or not GEMINI_API_KEY:
     st.error("❌ Missing Supabase or Gemini credentials.")
     st.stop()
 
-# --- Init Supabase and Gemini ---
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 genai.configure(api_key=GEMINI_API_KEY)
 model = genai.GenerativeModel("gemini-2.0-flash")
 
-# --- Utility: Split sheet into blocks using blank rows ---
+# --- Split by blank rows ---
 def split_dataframe_by_blank_rows(df):
     split_indices = df[df.isnull().all(axis=1)].index.tolist()
     blocks = []
     start_idx = 0
-
     for idx in split_indices:
         block = df.iloc[start_idx:idx]
         if not block.dropna(how="all").empty:
             blocks.append(block.reset_index(drop=True))
         start_idx = idx + 1
-
     if start_idx < len(df):
         block = df.iloc[start_idx:]
         if not block.dropna(how="all").empty:
             blocks.append(block.reset_index(drop=True))
-
     return blocks
 
-# --- Utility: Gemini + Supabase processing ---
+# --- Gemini + Supabase processing ---
 def process_table(df_partial, user_query):
     df_partial = df_partial.dropna(axis=1, how="all")
-    df_partial.columns = df_partial.iloc[0]
+    raw_headers = df_partial.iloc[0].fillna("Unnamed").astype(str).str.strip()
+    df_partial.columns = raw_headers
     df_partial = df_partial[1:].reset_index(drop=True)
-    df_partial.columns = df_partial.columns.astype(str).str.strip()
+
+    # Fix top-left header if empty
+    if df_partial.columns[0].lower() in ["", "unnamed", "nan", "none"]:
+        df_partial.columns = ["RowHeader"] + list(df_partial.columns[1:])
+
     row_header = df_partial.columns[0]
     df_long = df_partial.melt(id_vars=[row_header], var_name="ColumnHeader", value_name="Value")
     df_long.rename(columns={row_header: "RowHeader"}, inplace=True)
@@ -102,7 +101,6 @@ Return JSON in this format:
         if "filters" in mapping:
             for k, v in mapping["filters"].items():
                 query = query.eq(k, str(v).strip().title())
-
         try:
             res = query.execute()
             if res.data:
@@ -117,7 +115,7 @@ Return JSON in this format:
 
     return df_long.pivot(index="RowHeader", columns="ColumnHeader", values=mapping["value_column"]).reset_index()
 
-# --- Utility: Convert to downloadable Excel ---
+# --- Excel download ---
 def to_excel_download(df):
     output = BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
@@ -139,30 +137,30 @@ if uploaded_file:
         st.warning("Selected sheet is empty.")
         st.stop()
 
-    # 🔍 Split into multiple blocks
     tables = split_dataframe_by_blank_rows(df)
 
     if not tables:
         st.warning("No tables detected in the sheet.")
         st.stop()
 
-    # 👤 Show all table blocks and get prompts
     prompts = []
     for i, table in enumerate(tables):
         st.subheader(f"🧾 Table {i+1}")
-    
+
         if len(table) > 1:
-            display_df = table.copy()
-            display_df.columns = display_df.iloc[0]
-            display_df = display_df[1:].reset_index(drop=True)
-            st.dataframe(display_df)
+            preview_df = table.copy()
+            headers = preview_df.iloc[0].fillna("Unnamed").astype(str).str.strip()
+            preview_df.columns = headers
+            preview_df = preview_df[1:].reset_index(drop=True)
+            if preview_df.columns[0].lower() in ["", "unnamed", "nan", "none"]:
+                preview_df.columns = ["RowHeader"] + list(preview_df.columns[1:])
+            st.dataframe(preview_df)
         else:
             st.dataframe(table)
-    
+
         prompt = st.text_input(f"Prompt for Table {i+1}", key=f"prompt_{i}")
         prompts.append(prompt)
 
-    # ▶️ Start processing
     if all(prompts):
         if st.button("Start Update"):
             for i, (table, prompt) in enumerate(zip(tables, prompts)):
