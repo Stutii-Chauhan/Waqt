@@ -102,16 +102,17 @@ Return JSON in this format:
 
     # Handle derived calculations if present
     if "calculation" in mapping and mapping["calculation"] in ["growth", "difference", "average"]:
-        # Pivot to wide format directly
         derived_df = df_long.pivot(index="RowHeader", columns="ColumnHeader", values="Value")
 
-        # Apply calculations
+        # Convert all to numeric first
+        derived_df_numeric = derived_df.apply(pd.to_numeric, errors='coerce')
+
         if mapping["calculation"] == "growth":
-            result_df = derived_df.pct_change(axis=1).fillna(0).round(2)
+            result_df = derived_df_numeric.pct_change(axis=1).fillna(0).round(2)
         elif mapping["calculation"] == "difference":
-            result_df = derived_df.diff(axis=1).fillna(0).round(2)
+            result_df = derived_df_numeric.diff(axis=1).fillna(0).round(2)
         elif mapping["calculation"] == "average":
-            result_df = derived_df.mean(axis=1).round(2).to_frame(name="Average")
+            result_df = derived_df_numeric.mean(axis=1, skipna=True).round(2).to_frame(name="Average")
             result_df.reset_index(inplace=True)
             return result_df
 
