@@ -3,6 +3,8 @@ import pandas as pd
 from io import BytesIO
 from supabase import create_client
 import google.generativeai as genai
+from openpyxl import load_workbook
+from openpyxl.utils.dataframe import dataframe_to_rows
 import json
 import re
 
@@ -26,16 +28,20 @@ def split_dataframe_by_blank_rows(df):
     split_indices = df[df.isnull().all(axis=1)].index.tolist()
     blocks = []
     start_idx = 0
+
     for idx in split_indices:
         block = df.iloc[start_idx:idx]
         if not block.dropna(how="all").empty:
-            blocks.append(block.reset_index(drop=True))
+            blocks.append((start_idx, block.reset_index(drop=True)))
         start_idx = idx + 1
+
     if start_idx < len(df):
         block = df.iloc[start_idx:]
         if not block.dropna(how="all").empty:
-            blocks.append(block.reset_index(drop=True))
-    return blocks
+            blocks.append((start_idx, block.reset_index(drop=True)))
+
+    return blocks  # list of (start_row_index, df)
+
 
 # --- Gemini + Supabase processing ---
 def process_table(df_partial, user_query):
@@ -142,11 +148,14 @@ if uploaded_file:
     if not tables:
         st.warning("No tables detected in the sheet.")
         st.stop()
-
+    
     prompts = []
-    for i, table in enumerate(tables):
+    positions = []
+    
+    for i, (start_row, table) in enumerate(tables):
+        positions.append(start_row)
         st.subheader(f"🧾 Table {i+1}")
-
+    
         if len(table) > 1:
             preview_df = table.copy()
             headers = preview_df.iloc[0].fillna("Unnamed").astype(str).str.strip()
@@ -157,29 +166,40 @@ if uploaded_file:
             st.dataframe(preview_df)
         else:
             st.dataframe(table)
-
+    
         prompt = st.text_input(f"Prompt for Table {i+1}", key=f"prompt_{i}")
         prompts.append(prompt)
-
+    
+    # 🔁 Process on button click
     if all(prompts):
         start_triggered = st.button("Start Update")
     
         if start_triggered:
             results = []
     
-            for i, (table, prompt) in enumerate(zip(tables, prompts)):
+            for i, ((start_row, table), prompt) in enumerate(zip(tables, prompts)):
                 with st.spinner(f"Processing Table {i+1}..."):
                     updated = process_table(table, prompt)
-                    results.append((i + 1, updated))
-    
-            for idx, updated in results:
-                if updated is not None:
-                    st.success(f"✅ Table {idx} Updated")
+                    results.append((start_row, updated))
+                    st.success(f"✅ Table {i+1} Updated")
                     st.dataframe(updated)
-                    st.download_button(
-                        f"📥 Download Table {idx}",
-                        data=to_excel_download(updated),
-                        file_name=f"table_{idx}_updated.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    )
-
+    
+            # 📥 Write updated tables into the original workbook
+            from io import BytesIO
+            wb = load_workbook(uploaded_file)
+            ws = wb[selected_sheet]
+    
+            for (start_row, updated_df) in results:
+                for r_idx, row in enumerate(dataframe_to_rows(updated_df, index=False, header=True)):
+                    for c_idx, value in enumerate(row):
+                        ws.cell(row=start_row + r_idx + 1, column=c_idx + 1, value=value)
+    
+            output = BytesIO()
+            wb.save(output)
+    
+            st.download_button(
+                "📥 Download Updated Excel (Original Layout)",
+                data=output.getvalue(),
+                file_name="updated_template_style.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
