@@ -149,29 +149,23 @@ if uploaded_file:
         st.warning("No tables detected in the sheet.")
         st.stop()
     
-    prompts = []
-    positions = []
+    user_prompt_input = st.text_input(
+        "Enter prompts for all tables (separated by `;`)", 
+        placeholder="e.g. Sales by Region; Sales by Gender; Sales by Type"
+    )
+    prompts = [p.strip() for p in user_prompt_input.split(";") if p.strip()]
+    positions = [start_row for (start_row, _) in tables]
     
-    for i, (start_row, table) in enumerate(tables):
-        positions.append(start_row)
-        st.subheader(f"🧾 Table {i+1}")
-    
-        if len(table) > 1:
-            preview_df = table.copy()
-            headers = preview_df.iloc[0].fillna("Unnamed").astype(str).str.strip()
-            preview_df.columns = headers
-            preview_df = preview_df[1:].reset_index(drop=True)
-            if preview_df.columns[0].lower() in ["", "unnamed", "nan", "none"]:
-                preview_df.columns = ["RowHeader"] + list(preview_df.columns[1:])
-            st.dataframe(preview_df)
-        else:
-            st.dataframe(table)
-    
-        prompt = st.text_input(f"Prompt for Table {i+1}", key=f"prompt_{i}")
-        prompts.append(prompt)
+    if len(prompts) != len(tables):
+        st.warning(f"You entered {len(prompts)} prompts for {len(tables)} tables. Please match the count.")
+    else:
+        st.markdown("### 🧾 Prompt Mappings")
+        for i, prompt in enumerate(prompts):
+            st.markdown(f"**Prompt {i+1} → Table {i+1}:** `{prompt}`")
+
     
     # 🔁 Process on button click
-    if all(prompts):
+    if len(prompts) == len(tables):
         start_triggered = st.button("Start Update")
     
         if start_triggered:
