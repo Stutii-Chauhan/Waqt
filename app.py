@@ -107,13 +107,22 @@ Important:
 
         try:
             gemini_response = model.generate_content(gemini_instruction)
-            structured_json = json.loads(gemini_response.text)
+
+            # --- Clean Gemini response ---
+            gemini_text = gemini_response.text.strip()
+
+            # Extract JSON using regex (if Gemini adds any text around it)
+            match = re.search(r"{.*}", gemini_text, re.DOTALL)
+            if not match:
+                raise ValueError("No valid JSON object found in Gemini response.")
+
+            structured_json = json.loads(match.group(0))
 
             st.success("✅ Gemini extracted the following logic:")
             st.json(structured_json)
 
         except Exception as e:
-            st.error(f"⚠️ Gemini failed: {e}")
+            st.error(f"⚠️ Gemini failed to extract structured logic: {e}")
 
 
 
