@@ -50,7 +50,6 @@ def process_table(df_partial, user_query):
     df_partial.columns = raw_headers
     df_partial = df_partial[1:].reset_index(drop=True)
 
-    # Fix top-left header if empty
     if df_partial.columns[0].lower() in ["", "unnamed", "nan", "none"]:
         df_partial.columns = ["RowHeader"] + list(df_partial.columns[1:])
 
@@ -63,8 +62,9 @@ def process_table(df_partial, user_query):
     sales_category_gender_region: [Gender Category, Region, Product Category, Sales]
     region_quarter_category_sales: [Region, Quarter, Product Category, Sales]
     """
+
     prompt = f"""
-You are a smart assistant that maps Excel structures to database tables.
+You are a smart assistant that maps Excel structures to database tables or calculations.
 
 User Query:
 {user_query}
@@ -75,13 +75,16 @@ Excel DataFrame (melted format):
 Available tables:
 {available_tables}
 
+You can also return derived operations like "growth", "difference", or "average".
+
 Return JSON in this format:
 {{
-  "table": "...",
+  "table": "...",             ← optional if derived
   "row_header_column": "...",
   "column_header_column": "...",
   "value_column": "...",
-  "filters": {{ optional key-value filters like "Product Category": "Eyewear", "Quarter": "Q1" }}
+  "filters": {{ optional key-value filters }},
+  "calculation": "growth"     ← optional: growth, difference, average
 }}
     """
 
@@ -91,12 +94,31 @@ Return JSON in this format:
     try:
         cleaned_json = re.sub(r"^```json|```$", "", response.text.strip(), flags=re.MULTILINE).strip()
         mapping = json.loads(cleaned_json)
-        st.info(f"Using Supabase table: `{mapping['table']}`")
+        st.info("Gemini JSON Output:")
         st.json(mapping)
     except Exception:
         st.error("Gemini returned invalid JSON. Please check prompt.")
         return None
 
+    # Handle derived calculations if present
+    if "calculation" in mapping and mapping["calculation"] in ["growth", "difference", "average"]:
+        # Pivot to wide format directly
+        derived_df = df_long.pivot(index="RowHeader", columns="ColumnHeader", values="Value")
+
+        # Apply calculations
+        if mapping["calculation"] == "growth":
+            result_df = derived_df.pct_change(axis=1).fillna(0).round(2)
+        elif mapping["calculation"] == "difference":
+            result_df = derived_df.diff(axis=1).fillna(0).round(2)
+        elif mapping["calculation"] == "average":
+            result_df = derived_df.mean(axis=1).round(2).to_frame(name="Average")
+            result_df.reset_index(inplace=True)
+            return result_df
+
+        result_df.reset_index(inplace=True)
+        return result_df
+
+    # Default: fetch actual values from Supabase
     def fetch_value(row_val, col_val):
         query = (
             supabase.table(mapping["table"])
