@@ -43,7 +43,6 @@ def split_dataframe_by_blank_rows(df):
     return blocks  # list of (start_row_index, df)
 
 
-# --- Gemini + Supabase processing ---
 def process_table(df_partial, user_query):
     df_partial = df_partial.dropna(axis=1, how="all")
     raw_headers = df_partial.iloc[0].fillna("Unnamed").astype(str).str.strip()
@@ -77,16 +76,16 @@ Available tables:
 
 You can also return derived operations like "growth", "difference", or "average".
 
-Return JSON in this format:
+If an average is needed, you may omit 'row_header_column' and 'column_header_column', and instead return:
+
 {{
-  "table": "...",             ← optional if derived
-  "row_header_column": "...",
-  "column_header_column": "...",
-  "value_column": "...",
-  "filters": {{ optional key-value filters }},
-  "calculation": "growth"     ← optional: growth, difference, average
+  "table": "...",
+  "group_by": ["...", "..."],        ← fields to group by (e.g., Region, Gender)
+  "value_column": "...",             ← field to aggregate (e.g., Sales)
+  "agg_function": "average",         ← allowed: average, sum, max, etc.
+  "filters": {{ optional key-value filters }}
 }}
-    """
+"""
 
     with st.spinner("Sending prompt to Gemini..."):
         response = model.generate_content(prompt)
@@ -100,14 +99,44 @@ Return JSON in this format:
         st.error("Gemini returned invalid JSON. Please check prompt.")
         return None
 
-    # Handle derived calculations if present
-    if "calculation" in mapping and mapping["calculation"] in ["growth", "difference", "average"]:
-        # Step 1: Build all row-col pairs from the uploaded table
+    # ✅ Option 2: Supabase-based grouped aggregation
+    if "agg_function" in mapping and "group_by" in mapping:
+        try:
+            query = supabase.table(mapping["table"]).select("*")
+
+            if "filters" in mapping:
+                for k, v in mapping["filters"].items():
+                    query = query.eq(k, str(v).strip().title())
+
+            result = query.execute()
+            df_result = pd.DataFrame(result.data)
+
+            if df_result.empty:
+                st.warning("No data found for aggregation.")
+                return None
+
+            grouped_df = (
+                df_result
+                .groupby(mapping["group_by"])[mapping["value_column"]]
+                .mean()  # Extendable: .sum(), .max(), etc.
+                .round(2)
+                .unstack()
+                .fillna(0)
+                .reset_index()
+            )
+            return grouped_df
+
+        except Exception as e:
+            st.error(f"❌ Supabase aggregation failed: {e}")
+            return None
+
+    # 🧮 Option 1: Growth / Difference from Excel-based structure
+    if "calculation" in mapping and mapping["calculation"] in ["growth", "difference"]:
+        # Generate lookup grid
         unique_rows = df_long["RowHeader"].unique()
         unique_cols = df_long["ColumnHeader"].unique()
         lookup_grid = pd.DataFrame([(r, c) for r in unique_rows for c in unique_cols], columns=["RowHeader", "ColumnHeader"])
-    
-        # Step 2: Fetch actual values from Supabase
+
         def fetch_value(row_val, col_val):
             query = (
                 supabase.table(mapping["table"])
@@ -122,30 +151,23 @@ Return JSON in this format:
                 res = query.execute()
                 if res.data:
                     return sum([r[mapping["value_column"]] for r in res.data])
-            except Exception as e:
-                st.error(f"❌ Supabase query failed: {e}")
+            except:
+                return None
             return None
-    
+
         lookup_grid["Value"] = lookup_grid.apply(lambda row: fetch_value(row["RowHeader"], row["ColumnHeader"]), axis=1)
-    
-        # Step 3: Pivot to wide format and convert to numeric
         derived_df = lookup_grid.pivot(index="RowHeader", columns="ColumnHeader", values="Value")
         derived_df_numeric = derived_df.apply(pd.to_numeric, errors='coerce')
-    
-        # Step 4: Apply required calculation
+
         if mapping["calculation"] == "growth":
             result_df = derived_df_numeric.pct_change(axis=1).fillna(0).round(2)
         elif mapping["calculation"] == "difference":
             result_df = derived_df_numeric.diff(axis=1).fillna(0).round(2)
-        elif mapping["calculation"] == "average":
-            result_df = derived_df_numeric.mean(axis=1, skipna=True).round(2).to_frame(name="Average")
-            result_df.reset_index(inplace=True)
-            return result_df
-    
+
         result_df.reset_index(inplace=True)
         return result_df
-    
-    # Default: fetch actual values from Supabase
+
+    # 🧱 Default: Fetch values for each cell from Supabase
     def fetch_value(row_val, col_val):
         query = (
             supabase.table(mapping["table"])
@@ -163,12 +185,13 @@ Return JSON in this format:
         except Exception as e:
             st.error(f"❌ Supabase query failed: {e}")
         return None
-    
+
     df_long[mapping["value_column"]] = df_long.apply(
         lambda row: fetch_value(row["RowHeader"], row["ColumnHeader"]), axis=1
     )
-    
+
     return df_long.pivot(index="RowHeader", columns="ColumnHeader", values=mapping["value_column"]).reset_index()
+
 
 
 # --- Excel download ---
