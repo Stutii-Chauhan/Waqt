@@ -162,16 +162,24 @@ if uploaded_file:
         prompts.append(prompt)
 
     if all(prompts):
-        if st.button("Start Update"):
+        start_triggered = st.button("Start Update")
+    
+        if start_triggered:
+            results = []
+    
             for i, (table, prompt) in enumerate(zip(tables, prompts)):
-                st.markdown(f"### 🔄 Processing Table {i+1}")
-                updated = process_table(table, prompt)
+                with st.spinner(f"Processing Table {i+1}..."):
+                    updated = process_table(table, prompt)
+                    results.append((i + 1, updated))
+    
+            for idx, updated in results:
                 if updated is not None:
-                    st.success(f"✅ Table {i+1} Updated")
+                    st.success(f"✅ Table {idx} Updated")
                     st.dataframe(updated)
                     st.download_button(
-                        f"📥 Download Table {i+1}",
+                        f"📥 Download Table {idx}",
                         data=to_excel_download(updated),
-                        file_name=f"table_{i+1}_updated.xlsx",
+                        file_name=f"table_{idx}_updated.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     )
+
