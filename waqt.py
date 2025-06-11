@@ -102,11 +102,37 @@ Return JSON in this format:
 
     # Handle derived calculations if present
     if "calculation" in mapping and mapping["calculation"] in ["growth", "difference", "average"]:
-        derived_df = df_long.pivot(index="RowHeader", columns="ColumnHeader", values="Value")
-
-        # Convert all to numeric first
+        # Step 1: Build all row-col pairs from the uploaded table
+        unique_rows = df_long["RowHeader"].unique()
+        unique_cols = df_long["ColumnHeader"].unique()
+        lookup_grid = pd.DataFrame([(r, c) for r in unique_rows for c in unique_cols], columns=["RowHeader", "ColumnHeader"])
+    
+        # Step 2: Fetch actual values from Supabase
+        def fetch_value(row_val, col_val):
+            query = (
+                supabase.table(mapping["table"])
+                .select(mapping["value_column"])
+                .eq(mapping["row_header_column"], str(row_val).strip().title())
+                .eq(mapping["column_header_column"], str(col_val).strip().title())
+            )
+            if "filters" in mapping:
+                for k, v in mapping["filters"].items():
+                    query = query.eq(k, str(v).strip().title())
+            try:
+                res = query.execute()
+                if res.data:
+                    return sum([r[mapping["value_column"]] for r in res.data])
+            except Exception as e:
+                st.error(f"❌ Supabase query failed: {e}")
+            return None
+    
+        lookup_grid["Value"] = lookup_grid.apply(lambda row: fetch_value(row["RowHeader"], row["ColumnHeader"]), axis=1)
+    
+        # Step 3: Pivot to wide format and convert to numeric
+        derived_df = lookup_grid.pivot(index="RowHeader", columns="ColumnHeader", values="Value")
         derived_df_numeric = derived_df.apply(pd.to_numeric, errors='coerce')
-
+    
+        # Step 4: Apply required calculation
         if mapping["calculation"] == "growth":
             result_df = derived_df_numeric.pct_change(axis=1).fillna(0).round(2)
         elif mapping["calculation"] == "difference":
@@ -115,10 +141,10 @@ Return JSON in this format:
             result_df = derived_df_numeric.mean(axis=1, skipna=True).round(2).to_frame(name="Average")
             result_df.reset_index(inplace=True)
             return result_df
-
+    
         result_df.reset_index(inplace=True)
         return result_df
-
+    
     # Default: fetch actual values from Supabase
     def fetch_value(row_val, col_val):
         query = (
@@ -137,12 +163,13 @@ Return JSON in this format:
         except Exception as e:
             st.error(f"❌ Supabase query failed: {e}")
         return None
-
+    
     df_long[mapping["value_column"]] = df_long.apply(
         lambda row: fetch_value(row["RowHeader"], row["ColumnHeader"]), axis=1
     )
-
+    
     return df_long.pivot(index="RowHeader", columns="ColumnHeader", values=mapping["value_column"]).reset_index()
+
 
 # --- Excel download ---
 def to_excel_download(df):
