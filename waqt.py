@@ -4,11 +4,17 @@ from io import BytesIO
 from supabase import create_client
 import google.generativeai as genai
 from openpyxl import load_workbook
+from difflib import get_close_matches
 from openpyxl.utils.dataframe import dataframe_to_rows
 import json
 import re
 
+
 st.set_page_config(page_title="Excel Auto-Updater for Waqt", layout="wide")
+
+def suggest_column_name(col_name, available_columns):
+    matches = get_close_matches(col_name, available_columns, n=1, cutoff=0.6)
+    return matches[0] if matches else None
 
 # --- Load environment variables ---
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
@@ -93,6 +99,32 @@ Return JSON in this format:
         mapping = json.loads(cleaned_json)
         st.info(f"Using Supabase table: `{mapping['table']}`")
         st.json(mapping)
+
+        # 🛡️ Validate column names using live data from Supabase
+        table_meta = supabase.table(mapping["table"]).select("*").limit(1).execute()
+        if not table_meta.data:
+            st.error("Unable to fetch schema from Supabase.")
+            return None
+        actual_columns = list(table_meta.data[0].keys())
+
+        # 🧠 Check and correct invalid keys
+        for key in ["row_header_column", "column_header_column", "value_column"]:
+            current = mapping.get(key, "")
+            if current not in actual_columns:
+                suggestion = suggest_column_name(current, actual_columns)
+                if suggestion:
+                    st.warning(f"⚠️ `{current}` not found in table. Suggesting closest match.")
+                    corrected = st.selectbox(
+                        f"Replace `{current}` with one of the actual columns:",
+                        options=[suggestion] + actual_columns,
+                        index=0,
+                        key=f"fix_{key}"
+                    )
+                    mapping[key] = corrected
+                else:
+                    st.error(f"❌ Column `{current}` is invalid and no suggestions found.")
+                    return None
+
     except Exception:
         st.error("Gemini returned invalid JSON. Please check prompt.")
         return None
