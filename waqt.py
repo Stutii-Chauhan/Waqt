@@ -49,8 +49,6 @@ def split_dataframe_by_blank_rows(df):
     return blocks  # list of (start_row_index, df)
 
 
-# --- Gemini + Supabase processing ---
-# --- Gemini + Supabase processing ---
 def process_table(df_partial, user_query):
     df_partial = df_partial.dropna(axis=1, how="all")
     raw_headers = df_partial.iloc[0].fillna("Unnamed").astype(str).str.strip()
@@ -101,7 +99,7 @@ Return JSON in this format:
         st.info(f"Using Supabase table: `{mapping['table']}`")
         st.json(mapping)
 
-        # 🧠 Step 4A: Validate column names using Supabase schema
+        # 🧠 Step 4A: Validate column names
         table_meta = supabase.table(mapping["table"]).select("*").limit(1).execute()
         if not table_meta.data:
             st.error("Unable to fetch schema from Supabase.")
@@ -113,9 +111,9 @@ Return JSON in this format:
             if current not in actual_columns:
                 suggestion = suggest_column_name(current, actual_columns)
                 if suggestion:
-                    st.warning(f"⚠️ `{current}` not found in table. Suggesting closest match.")
+                    st.warning(f"⚠️ `{current}` not found. Suggesting closest match.")
                     corrected = st.selectbox(
-                        f"Replace `{current}` with one of the actual columns:",
+                        f"Replace `{current}` with:",
                         options=[suggestion] + actual_columns,
                         index=0,
                         key=f"fix_{key}"
@@ -129,60 +127,79 @@ Return JSON in this format:
         st.error("Gemini returned invalid JSON. Please check prompt.")
         return None
 
-    # --- Step 4B & 4C: Robust value fetching with fuzzy fallback ---
-    def fetch_value_safe(row_val, col_val, table_name, row_column, col_column, value_column, filters):
+    # ✅ Step 4B & 4C combined into fetch_value_safe_enhanced
+    def fetch_value_safe_enhanced(row_val, col_val, table_name, row_column, col_column, value_column, filters):
+        from difflib import get_close_matches
+
+        def get_suggestion(value, options):
+            match = get_close_matches(str(value), options, n=1, cutoff=0.6)
+            return match[0] if match else None
+
         try:
             query = (
                 supabase.table(table_name)
                 .select(value_column)
-                .eq(row_column, str(row_val).strip().title())
-                .eq(col_column, str(col_val).strip().title())
+                .ilike(row_column, str(row_val).strip())
+                .ilike(col_column, str(col_val).strip())
             )
-    
             for k, v in filters.items():
-                query = query.eq(k, str(v).strip().title())
-    
+                query = query.ilike(k, str(v).strip())
             res = query.execute()
-    
-            if res.data:
-                return sum([r[value_column] for r in res.data])
-    
-            # 🧠 Step 4C fallback: Suggest closest values if no data found
-            row_vals = supabase.table(table_name).select(row_column).execute()
-            col_vals = supabase.table(table_name).select(col_column).execute()
-    
-            all_row_vals = [r[row_column] for r in row_vals.data if row_column in r]
-            all_col_vals = [r[col_column] for r in col_vals.data if col_column in r]
-    
-            suggested_row = suggest_column_name(str(row_val), all_row_vals)
-            suggested_col = suggest_column_name(str(col_val), all_col_vals)
-    
-            if suggested_row or suggested_col:
-                st.warning(f"🔍 No match found for: {row_val}, {col_val}. Trying suggestions...")
-                row_val = suggested_row or row_val
-                col_val = suggested_col or col_val
-    
-                # Rebuild query with suggestions
+
+            if not res.data:
+                st.warning(f"🔍 No match for `{row_val}, {col_val}`. Trying suggestions...")
+                all_row_vals = supabase.table(table_name).select(row_column).execute()
+                all_col_vals = supabase.table(table_name).select(col_column).execute()
+                row_options = [r[row_column] for r in all_row_vals.data if row_column in r]
+                col_options = [r[col_column] for r in all_col_vals.data if col_column in r]
+
+                suggested_row = get_suggestion(row_val, row_options)
+                suggested_col = get_suggestion(col_val, col_options)
+
+                if suggested_row:
+                    row_val = st.selectbox(f"Did you mean (row)?", [suggested_row] + row_options, key=f"suggest_row_{row_val}")
+                if suggested_col:
+                    col_val = st.selectbox(f"Did you mean (column)?", [suggested_col] + col_options, key=f"suggest_col_{col_val}")
+
                 query = (
                     supabase.table(table_name)
                     .select(value_column)
-                    .eq(row_column, str(row_val).strip().title())
-                    .eq(col_column, str(col_val).strip().title())
+                    .ilike(row_column, str(row_val).strip())
+                    .ilike(col_column, str(col_val).strip())
                 )
                 for k, v in filters.items():
-                    query = query.eq(k, str(v).strip().title())
-    
+                    query = query.ilike(k, str(v).strip())
                 res = query.execute()
-                if res.data:
-                    return sum([r[value_column] for r in res.data])
-    
+
+            # 🔁 Step 4C: Try filter value suggestions
+            if not res.data and filters:
+                for k, v in filters.items():
+                    filter_vals = supabase.table(table_name).select(k).execute()
+                    valid_vals = [r[k] for r in filter_vals.data if k in r]
+                    suggestion = get_suggestion(v, valid_vals)
+                    if suggestion:
+                        filters[k] = st.selectbox(f"Did you mean for `{k}`?", [suggestion] + valid_vals, key=f"suggest_filter_{k}_{v}")
+
+                query = (
+                    supabase.table(table_name)
+                    .select(value_column)
+                    .ilike(row_column, str(row_val).strip())
+                    .ilike(col_column, str(col_val).strip())
+                )
+                for k, v in filters.items():
+                    query = query.ilike(k, str(v).strip())
+                res = query.execute()
+
+            if res.data:
+                return sum([r[value_column] for r in res.data])
+
         except Exception as e:
             st.error(f"❌ Supabase query failed: {e}")
         return None
 
-    # Safely apply value-fetching with fallback suggestions
+    # Apply with fallback logic
     df_long[mapping["value_column"]] = df_long.apply(
-        lambda row: fetch_value_safe(
+        lambda row: fetch_value_safe_enhanced(
             row["RowHeader"],
             row["ColumnHeader"],
             mapping["table"],
@@ -193,12 +210,7 @@ Return JSON in this format:
         ), axis=1
     )
 
-    # Reshape the data back to wide format
-    return df_long.pivot(
-        index="RowHeader",
-        columns="ColumnHeader",
-        values=mapping["value_column"]
-    ).reset_index()
+    return df_long.pivot(index="RowHeader", columns="ColumnHeader", values=mapping["value_column"]).reset_index()
 
 
 # --- Excel download ---
