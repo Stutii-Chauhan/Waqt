@@ -161,6 +161,8 @@ if uploaded_file:
     sheet_names = list(sheets.keys())
     selected_sheet = st.selectbox("Select a sheet to process", sheet_names)
     df = sheets[selected_sheet]
+    st.subheader(f"📄 Preview of Template - `{selected_sheet}`")
+    st.dataframe(df, use_container_width=True)
 
     if df.empty:
         st.warning("Selected sheet is empty.")
