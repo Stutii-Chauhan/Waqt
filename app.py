@@ -58,7 +58,7 @@ if uploaded_file:
     if user_prompt:
         st.markdown("🧠 Calling Gemini to interpret your prompt...")
 
-        # --- Use updated schema with examples ---
+        # --- Define schema for Gemini ---
         column_info = {
             "brand": "Product's brand group (Group 1, Group 2, Group 3)",
             "product_gender": "Product gender (P, O, G, L, U)",
@@ -79,43 +79,44 @@ if uploaded_file:
             "value_masked": "Transaction revenue",
             "qty_masked": "Units sold"
         }
-
         column_description_text = "\n".join([f"- {k}: {v}" for k, v in column_info.items()])
 
+        # --- Convert Excel to long format (melted) ---
+        excel_long = df.reset_index().melt().dropna().head(20).to_csv(index=False)
+
+        # --- Gemini instruction ---
         gemini_instruction = f"""
-You are a data assistant for an Excel auto-updater tool.
+You are a smart assistant that maps Excel templates to database logic.
 
-The available Supabase table is 'toy_cleaned'. It contains the following columns:
-
-{column_description_text}
-
-Based on this user prompt:
+User query:
 \"{user_prompt}\"
 
-Return only a JSON object with:
-- table: always 'toy_cleaned'
-- group_by: list of columns to group by (use exact names from the above list)
+Here is a preview of the uploaded Excel file (in long format):
+{excel_long}
+
+Available Supabase table: "toy_cleaned"
+Columns in the table:
+{column_description_text}
+
+Return a JSON object with:
+- table: always "toy_cleaned"
+- group_by: list of columns to group by (based on Excel layout)
 - metric: column to aggregate
 - operation: one of ["sum", "average", "growth", "difference"]
-- filters: optional column:value pairs to filter the data
+- filters: dictionary of column:value pairs, if any
 
-Important:
-- Do NOT make up any column names
-- Use only the exact column names listed above
-- Format response as raw JSON without extra text
+⚠️ DO NOT make up column names. Use only the ones listed.
+❗ ONLY return a valid JSON object. Do NOT explain anything.
 """
 
         try:
             gemini_response = model.generate_content(gemini_instruction)
 
-            # --- Clean Gemini response ---
+            # Clean response
             gemini_text = gemini_response.text.strip()
-
-            # Extract JSON using regex (if Gemini adds any text around it)
             match = re.search(r"{.*}", gemini_text, re.DOTALL)
             if not match:
                 raise ValueError("No valid JSON object found in Gemini response.")
-
             structured_json = json.loads(match.group(0))
 
             st.success("✅ Gemini extracted the following logic:")
@@ -123,6 +124,7 @@ Important:
 
         except Exception as e:
             st.error(f"⚠️ Gemini failed to extract structured logic: {e}")
+
 
 
 
