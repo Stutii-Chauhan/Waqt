@@ -130,51 +130,57 @@ Return JSON in this format:
         return None
 
     # --- Step 4B & 4C: Robust value fetching with fuzzy fallback ---
-    def fetch_value_safe(row_val, col_val, table_name, row_key, col_key, val_key, filters):
-        def query_supabase(r, c):
-            q = supabase.table(table_name).select(val_key).eq(row_key, r).eq(col_key, c)
+    def fetch_value_safe(row_val, col_val, table_name, row_column, col_column, value_column, filters):
+        try:
+            query = (
+                supabase.table(table_name)
+                .select(value_column)
+                .eq(row_column, str(row_val).strip().title())
+                .eq(col_column, str(col_val).strip().title())
+            )
+    
             for k, v in filters.items():
-                q = q.eq(k, str(v).strip().title())
-            return q.execute()
-
-        try:
-            result = query_supabase(str(row_val).strip().title(), str(col_val).strip().title())
-            if result.data:
-                return sum([r[val_key] for r in result.data])
-        except:
-            pass
-
-        st.warning(f"🔍 No match found for: {row_val}, {col_val}. Trying suggestions...")
-
-        col_vals = supabase.table(table_name).select(col_key).execute()
-        row_vals = supabase.table(table_name).select(row_key).execute()
-        col_list = list({r[col_key] for r in col_vals.data}) if col_vals.data else []
-        row_list = list({r[row_key] for r in row_vals.data}) if row_vals.data else []
-
-        close_row = suggest_column_name(str(row_val), row_list)
-        close_col = suggest_column_name(str(col_val), col_list)
-
-        fixed_row = st.selectbox(
-            f"⚠️ `{row_val}` not found. Choose replacement:",
-            [close_row] + row_list if close_row else row_list,
-            index=0,
-            key=f"fix_row_{row_val}_{col_val}"
-        )
-        fixed_col = st.selectbox(
-            f"⚠️ `{col_val}` not found. Choose replacement:",
-            [close_col] + col_list if close_col else col_list,
-            index=0,
-            key=f"fix_col_{row_val}_{col_val}"
-        )
-
-        try:
-            result = query_supabase(fixed_row, fixed_col)
-            if result.data:
-                return sum([r[val_key] for r in result.data])
+                query = query.eq(k, str(v).strip().title())
+    
+            res = query.execute()
+    
+            if res.data:
+                return sum([r[value_column] for r in res.data])
+    
+            # 🧠 Step 4C fallback: Suggest closest values if no data found
+            row_vals = supabase.table(table_name).select(row_column).execute()
+            col_vals = supabase.table(table_name).select(col_column).execute()
+    
+            all_row_vals = [r[row_column] for r in row_vals.data if row_column in r]
+            all_col_vals = [r[col_column] for r in col_vals.data if col_column in r]
+    
+            suggested_row = suggest_column_name(str(row_val), all_row_vals)
+            suggested_col = suggest_column_name(str(col_val), all_col_vals)
+    
+            if suggested_row or suggested_col:
+                st.warning(f"🔍 No match found for: {row_val}, {col_val}. Trying suggestions...")
+                row_val = suggested_row or row_val
+                col_val = suggested_col or col_val
+    
+                # Rebuild query with suggestions
+                query = (
+                    supabase.table(table_name)
+                    .select(value_column)
+                    .eq(row_column, str(row_val).strip().title())
+                    .eq(col_column, str(col_val).strip().title())
+                )
+                for k, v in filters.items():
+                    query = query.eq(k, str(v).strip().title())
+    
+                res = query.execute()
+                if res.data:
+                    return sum([r[value_column] for r in res.data])
+    
         except Exception as e:
-            st.error(f"Supabase fetch failed even after correction: {e}")
+            st.error(f"❌ Supabase query failed: {e}")
         return None
 
+    # Safely apply value-fetching with fallback suggestions
     df_long[mapping["value_column"]] = df_long.apply(
         lambda row: fetch_value_safe(
             row["RowHeader"],
@@ -184,11 +190,16 @@ Return JSON in this format:
             mapping["column_header_column"],
             mapping["value_column"],
             mapping.get("filters", {})
-        ),
-        axis=1
+        ), axis=1
     )
 
-    return df_long.pivot(index="RowHeader", columns="ColumnHeader", values=mapping["value_column"]).reset_index()
+    # Reshape the data back to wide format
+    return df_long.pivot(
+        index="RowHeader",
+        columns="ColumnHeader",
+        values=mapping["value_column"]
+    ).reset_index()
+
 
 # --- Excel download ---
 def to_excel_download(df):
