@@ -58,14 +58,64 @@ if uploaded_file:
     if user_prompt:
         st.markdown("🧠 Calling Gemini to interpret your prompt...")
 
-        # Placeholder Gemini call (actual logic to come later)
+        # --- Use updated schema with examples ---
+        column_info = {
+            "brand": "Product's brand group (Group 1, Group 2, Group 3)",
+            "product_gender": "Product gender (P, O, G, L, U)",
+            "billdate": "Date of transaction",
+            "channel": "Sales channel (Channel A, Channel B, Channel C)",
+            "region": "Geographic region (North, East, South1 etc.)",
+            "itemnumber": "SKU or item ID",
+            "product_segment": "Watch category (Smart, Premium, Mainline Analog)",
+            "price_band": "Price range",
+            "ucp_final": "Numerical price value",
+            "bday_trans": "Was it a birthday campaign? (Y/N)",
+            "anniv_trans": "Was it an anniversary campaign? (Y/N)",
+            "customer_gender": "Customer's gender (Male, Female)",
+            "enc_ftd": "Customer's first transaction date",
+            "channel_ftd": "Date of First transaction on that channel",
+            "brand_ftd": "Date of First transaction with brand",
+            "customer_masked": "Masked customer ID",
+            "value_masked": "Transaction revenue",
+            "qty_masked": "Units sold"
+        }
+
+        column_description_text = "\n".join([f"- {k}: {v}" for k, v in column_info.items()])
+
+        gemini_instruction = f"""
+You are a data assistant for an Excel auto-updater tool.
+
+The available Supabase table is 'toy_cleaned'. It contains the following columns:
+
+{column_description_text}
+
+Based on this user prompt:
+\"{user_prompt}\"
+
+Return only a JSON object with:
+- table: always 'toy_cleaned'
+- group_by: list of columns to group by (use exact names from the above list)
+- metric: column to aggregate
+- operation: one of ["sum", "average", "growth", "difference"]
+- filters: optional column:value pairs to filter the data
+
+Important:
+- Do NOT make up any column names
+- Use only the exact column names listed above
+- Format response as raw JSON without extra text
+"""
+
         try:
-            gemini_response = model.generate_content(user_prompt)
-            response_text = gemini_response.text.strip()
-            st.success("✅ Gemini understood your prompt:")
-            st.code(response_text)
+            gemini_response = model.generate_content(gemini_instruction)
+            structured_json = json.loads(gemini_response.text)
+
+            st.success("✅ Gemini extracted the following logic:")
+            st.json(structured_json)
+
         except Exception as e:
             st.error(f"⚠️ Gemini failed: {e}")
+
+
 
         # TODO:
         # - Parse Gemini response into structured format
