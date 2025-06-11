@@ -1,25 +1,24 @@
 import streamlit as st
 import pandas as pd
 from io import BytesIO
-import os
 from supabase import create_client
 import google.generativeai as genai
 import json
 import re
 
+# --- Config ---
 st.set_page_config(page_title="Excel Auto-Updater for Waqt", layout="wide")
 
-# --- Load environment variables from Streamlit Secrets ---
+# --- Environment Secrets ---
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
 
-# --- Fail fast if secrets missing ---
 if not SUPABASE_URL or not SUPABASE_KEY or not GEMINI_API_KEY:
     st.error("❌ Missing Supabase or Gemini credentials.")
     st.stop()
 
-# --- Init Supabase and Gemini ---
+# --- Init Clients ---
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 genai.configure(api_key=GEMINI_API_KEY)
 model = genai.GenerativeModel("gemini-2.0-flash")
@@ -27,38 +26,45 @@ model = genai.GenerativeModel("gemini-2.0-flash")
 # --- Title ---
 st.title("📊 Excel Auto-Updater for Waqt")
 
-# --- Upload Excel File ---
+# --- Upload File ---
 uploaded_file = st.file_uploader("Step 1️⃣: Upload your Excel file", type=["xlsx"])
 
 if uploaded_file:
-    xls = pd.ExcelFile(uploaded_file)
-    sheet_names = xls.sheet_names
+    sheets = pd.read_excel(uploaded_file, sheet_name=None)
+    sheet_names = list(sheets.keys())
+    selected_sheet = st.selectbox("📑 Select a sheet to process", sheet_names)
+    df = sheets[selected_sheet]
 
-    # --- Sheet Selection ---
-    selected_sheet = st.selectbox("Step 2️⃣: Select a sheet", sheet_names)
-    df = pd.read_excel(xls, sheet_name=selected_sheet)
+    if df.empty:
+        st.warning("Selected sheet is empty.")
+        st.stop()
 
-    # --- Apply Title Case to headers and values ---
-    def standardize_to_title_case(df):
-        df.columns = [col.replace('_', ' ').title().replace(' ', '_') for col in df.columns]
-        for col in df.columns:
-            if df[col].dtype == "object":
-                df[col] = df[col].astype(str).str.title()
-        return df
+    # --- Auto-fix unnamed first column ---
+    if "unnamed" in df.columns[0].lower():
+        df.columns.values[0] = "RowHeader"
+    else:
+        df.columns.values[0] = df.columns[0].title().replace(" ", "_")
 
-    df = standardize_to_title_case(df)
+    row_header = df.columns[0]
 
-    # --- Show Preview ---
-    st.subheader("🔍 Preview of Uploaded Data")
+    # --- Standardize values to title case ---
+    for col in df.columns:
+        if df[col].dtype == "object":
+            df[col] = df[col].astype(str).str.title()
+
+    st.subheader(f"🔍 Preview: {selected_sheet}")
     st.dataframe(df.head(10), use_container_width=True)
 
-    # --- User Prompt ---
-    user_prompt = st.text_input("Step 3️⃣: What do you want to update or calculate in this sheet?")
+    # --- Melt the Excel into long format ---
+    df_long = df.melt(id_vars=[row_header], var_name="ColumnHeader", value_name="Value")
+    df_long.rename(columns={row_header: "RowHeader"}, inplace=True)
 
-    if user_prompt:
-        st.markdown("🧠 Calling Gemini to interpret your prompt...")
+    sample = df_long.head(5)
 
-        # --- Define schema for Gemini ---
+    # --- Prompt Input ---
+    user_query = st.text_input("Step 2️⃣: What do you want to update or calculate in this sheet?")
+
+    if user_query and st.button("🚀 Start"):
         column_info = {
             "brand": "Product's brand group (Group 1, Group 2, Group 3)",
             "product_gender": "Product gender (P, O, G, L, U)",
@@ -81,59 +87,92 @@ if uploaded_file:
         }
         column_description_text = "\n".join([f"- {k}: {v}" for k, v in column_info.items()])
 
-        # --- Convert Excel to long format (melted) ---
-        excel_long = df.reset_index().melt().dropna().head(20).to_csv(index=False)
+        available_tables = """
+        toy_cleaned: [Region, Channel, Product Segment, Value_Masked, Qty_Masked, ...]
+        """
 
-        # --- Gemini instruction ---
-        gemini_instruction = f"""
-You are a smart assistant that maps Excel templates to database logic.
+        prompt = f"""
+You are a smart assistant that maps Excel structures to database tables or calculations.
 
-User query:
-\"{user_prompt}\"
+User Query:
+{user_query}
 
-Here is a preview of the uploaded Excel file (in long format):
-{excel_long}
+Excel DataFrame (melted format):
+{sample.to_csv(index=False)}
 
-Available Supabase table: "toy_cleaned"
-Columns in the table:
+Available table:
+toy_cleaned
+
+Columns:
 {column_description_text}
 
-Return a JSON object with:
-- table: always "toy_cleaned"
-- group_by: list of columns to group by (based on Excel layout)
-- metric: column to aggregate
-- operation: one of ["sum", "average", "growth", "difference"]
-- filters: dictionary of column:value pairs, if any
-
-⚠️ DO NOT make up column names. Use only the ones listed.
-❗ ONLY return a valid JSON object. Do NOT explain anything.
+Return JSON in this format:
+{{
+  "table": "toy_cleaned",
+  "row_header_column": "...",
+  "column_header_column": "...",
+  "value_column": "...",
+  "operation": "sum",
+  "filters": {{ optional key-value filters like "Product Segment": "Premium" }}
+}}
+Only return a JSON object. Do NOT explain.
 """
 
+        with st.spinner("🤖 Sending structure + prompt to Gemini..."):
+            response = model.generate_content(prompt)
+
         try:
-            gemini_response = model.generate_content(gemini_instruction)
-
-            # Clean response
-            gemini_text = gemini_response.text.strip()
-            match = re.search(r"{.*}", gemini_text, re.DOTALL)
-            if not match:
-                raise ValueError("No valid JSON object found in Gemini response.")
-            structured_json = json.loads(match.group(0))
-
+            cleaned_json = re.sub(r"^```json|```$", "", response.text.strip(), flags=re.MULTILINE).strip()
+            mapping = json.loads(cleaned_json)
             st.success("✅ Gemini extracted the following logic:")
-            st.json(structured_json)
+            st.json(mapping)
+        except Exception:
+            st.error("❌ Gemini returned invalid JSON. Please check prompt.")
+            st.stop()
 
-        except Exception as e:
-            st.error(f"⚠️ Gemini failed to extract structured logic: {e}")
+        # --- Query Supabase based on mapping ---
+        def fetch_value(row_val, col_val):
+            query = (
+                supabase.table(mapping["table"])
+                .select(mapping["value_column"])
+                .eq(mapping["row_header_column"], str(row_val).strip().title())
+                .eq(mapping["column_header_column"], str(col_val).strip().title())
+            )
+            if "filters" in mapping:
+                for k, v in mapping["filters"].items():
+                    query = query.eq(k, str(v).strip().title())
 
+            try:
+                res = query.execute()
+            except Exception as e:
+                st.error(f"❌ Supabase query failed: {e}")
+                return None
 
+            if res.data:
+                return sum([r[mapping["value_column"]] for r in res.data])
+            return None
 
+        st.warning(f"📡 Querying table: {mapping['table']}")
 
-        # TODO:
-        # - Parse Gemini response into structured format
-        # - Validate fields against Supabase schema
-        # - Query Supabase
-        # - Update DataFrame
-        # - Show and allow download of updated Excel
+        df_long[mapping["value_column"]] = df_long.apply(
+            lambda row: fetch_value(row["RowHeader"], row["ColumnHeader"]), axis=1
+        )
 
-else:
-    st.info("📁 Please upload an Excel file to begin.")
+        updated_df = df_long.pivot(index="RowHeader", columns="ColumnHeader", values=mapping["value_column"]).reset_index()
+
+        st.subheader("✅ Updated Excel")
+        st.dataframe(updated_df, use_container_width=True)
+
+        # --- Download ---
+        def to_excel_download(df):
+            output = BytesIO()
+            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                df.to_excel(writer, index=False)
+            return output.getvalue()
+
+        st.download_button(
+            label="📥 Download Updated Excel",
+            data=to_excel_download(updated_df),
+            file_name="updated_sales.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
