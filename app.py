@@ -139,9 +139,9 @@ if uploaded_file:
         sql_query = sql_query.rstrip(";")
 
 
-        st.subheader("🧠 Gemini SQL Output")
-        st.code(sql_query, language="sql")
-        st.warning("⚠️ Ensure your Supabase has an RPC function called 'run_sql' that accepts a 'query' parameter")
+        with st.expander("🧠 Gemini SQL Output (click to expand)"):
+            st.code(sql_query, language="sql")
+
 
         try:
             result = supabase.rpc("run_sql", {"query": sql_query}).execute()
