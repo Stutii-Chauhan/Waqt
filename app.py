@@ -24,7 +24,7 @@ genai.configure(api_key=GEMINI_API_KEY)
 model = genai.GenerativeModel("gemini-2.0-flash")
 
 # --- Title ---
-st.title("\ud83d\udcca Excel Auto-Updater for Waqt")
+st.title("Excel Auto-Updater for Waqt")
 
 # --- Upload File ---
 uploaded_file = st.file_uploader("Step 1\ufe0f\ufe0f: Upload your Excel file", type=["xlsx"])
