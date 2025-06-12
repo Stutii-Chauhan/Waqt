@@ -15,7 +15,7 @@ SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
 
 if not SUPABASE_URL or not SUPABASE_KEY or not GEMINI_API_KEY:
-    st.error(" Missing Supabase or Gemini credentials.")
+    st.error("Missing Supabase or Gemini credentials.")
     st.stop()
 
 # --- Init Clients ---
@@ -64,29 +64,31 @@ if uploaded_file:
 
     if user_query and st.button("Start"):
         column_info = {
-            "brand": "Product's brand group (Group 1, Group 2, Group 3)",
-            "product_gender": "Product gender (P, O, G, L, U)",
-            "billdate": "Date of transaction",
-            "channel": "Sales channel (Channel A, Channel B, Channel C)",
-            "region": "Geographic region (North, East, South1 etc.)",
-            "itemnumber": "SKU or item ID",
-            "product_segment": "Watch category (Smart, Premium, Mainline Analog)",
-            "price_band": "Price range",
-            "ucp_final": "Numerical price value",
-            "bday_trans": "Was it a birthday campaign? (Y/N)",
-            "anniv_trans": "Was it an anniversary campaign? (Y/N)",
-            "customer_gender": "Customer's gender (Male, Female)",
-            "enc_ftd": "Customer's first transaction date",
-            "channel_ftd": "Date of First transaction on that channel",
-            "brand_ftd": "Date of First transaction with brand",
-            "customer_masked": "Masked customer ID",
-            "value_masked": "Transaction revenue",
-            "qty_masked": "Units sold"
-        }
-        column_description_text = "\n".join([f"- {k}: {v}" for k, v in column_info.items()])
+    "brand": "Product's brand group (Group 1, Group 2, Group 3)",
+    "product_gender": "Product gender (P, O, G, L, U)",
+    "billdate": "Date of transaction",
+    "channel": "Sales channel (Channel A, Channel B, Channel C)",
+    "region": "Geographic region (North, East, South1 etc.)",
+    "itemnumber": "SKU or item ID",
+    "product_segment": "Watch category (Smart, Premium, Mainline Analog)",
+    "ucp_final": "Numerical price value",
+    "bday_trans": "Was it a birthday campaign? (Y/N)",
+    "anniv_trans": "Was it an anniversary campaign? (Y/N)",
+    "customer_gender": "Customer's gender (Male, Female)",
+    "enc_ftd": "Customer's first transaction date",
+    "channel_ftd": "Date of First transaction on that channel",
+    "brand_ftd": "Date of First transaction with brand",
+    "customer_masked": "Masked customer ID",
+    "value_masked": "Transaction revenue",
+    "qty_masked": "Units sold"
+}
+column_description_text = "
+".join([f"- {k}: {v}" for k, v in column_info.items()])
 
-        prompt = f"""
-You are a smart assistant that maps Excel structures to database tables or calculations.
+prompt = f"""
+You are a PostgreSQL expert.
+
+Given the user query and the sample Excel structure (in JSON), generate a SQL query to get the required data from the table `toy_cleaned`.
 
 User Query:
 {user_query}
@@ -94,123 +96,53 @@ User Query:
 Excel Data (JSON preview):
 {sample_json}
 
-Available table:
-toy_cleaned
+Table: toy_cleaned
 
-Columns:
+Schema (column names and descriptions):
 {column_description_text}
 
-Return JSON in this format:
-{{
-  "table": "toy_cleaned",
-  "row_header_column": "...",
-  "column_header_column": "...",
-  "value_column": "...",
-  "operation": "sum",
-  "filters": {{ optional key-value filters like "Product Segment": "Premium" }}
-}}
-Only return a JSON object. Do NOT explain.
+Output only the SQL query. Do NOT explain anything.
 """
 
-        with st.spinner("Sending structure + prompt to Gemini..."):
+        with st.spinner("Sending structure + query to Gemini..."):
             response = model.generate_content(prompt)
 
+        sql_query = response.text.strip().strip("`").strip()
+
+        st.subheader("🧠 Gemini SQL Output")
+        st.code(sql_query, language="sql")
+
+        st.warning("⚠️ Ensure your Supabase has an RPC function called 'run_sql' that accepts a 'query' parameter")
+
         try:
-            cleaned_json = re.sub(r"^```json|```$", "", response.text.strip(), flags=re.MULTILINE).strip()
-            mapping = json.loads(cleaned_json)
-            st.subheader("🧠 Gemini Output Mapping")
-            st.json(mapping)
-        except Exception:
-            st.error("Gemini returned invalid JSON. Please check prompt.")
+            result = supabase.rpc("run_sql", {"query": sql_query}).execute()
+            result_df = pd.DataFrame(result.data)
+        except Exception as e:
+            st.error(f"SQL execution failed: {e}")
             st.stop()
 
-        with st.spinner("Fetching aggregated data from Supabase..."):
-            filters = mapping.get("filters", {})
-            st.subheader("📌 Filters applied to SQL")
-            st.write(filters)
-            operation = mapping.get("operation", "sum").lower()
+        if result_df.empty:
+            st.warning("No matching data found in Supabase.")
+            st.stop()
 
-            row_values = [v.strip() for v in df[row_header].dropna().unique()]
-            col_values = [v.strip() for v in column_headers]
-            st.write("Row Header Values used in SQL:", row_values)
-            st.write("Column Header Values used in SQL:", col_values)
+        # Pivot result to original format if 3 columns returned
+        if result_df.shape[1] == 3:
+            final_df = result_df.pivot(index=result_df.columns[0], columns=result_df.columns[1], values=result_df.columns[2]).reset_index()
+        else:
+            final_df = result_df
 
+        st.subheader("📥 Updated Excel Output")
+        st.dataframe(final_df, use_container_width=True)
 
-            query = supabase.table(mapping["table"]).select(
-                f"{mapping['row_header_column']}, {mapping['column_header_column']}, {mapping['value_column']}"
-            )
+        def to_excel_download(df):
+            output = BytesIO()
+            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                df.to_excel(writer, index=False)
+            return output.getvalue()
 
-            for key, val in filters.items():
-                query = query.eq(key, str(val).strip())
-
-            query = query.in_(mapping["row_header_column"], row_values)
-            query = query.in_(mapping["column_header_column"], col_values)
-
-            where_clauses = [f"{k} = '{v}'" for k, v in filters.items()]
-            where_clauses.append(f"{mapping['row_header_column']} IN ({', '.join([repr(v) for v in row_values])})")
-            where_clauses.append(f"{mapping['column_header_column']} IN ({', '.join([repr(v) for v in col_values])})")
-
-            sql_preview = f"""
-SELECT {mapping['row_header_column']}, {mapping['column_header_column']}, {mapping['value_column']}
-FROM {mapping['table']}
-WHERE {' AND '.join(where_clauses)}
-"""
-            st.code(sql_preview, language="sql")
-
-            try:
-                result = query.execute()
-                result_df = pd.DataFrame(result.data)
-            
-                st.subheader("📄 Raw Supabase Result (before groupby)")
-                st.dataframe(result_df.head(20))
-            
-                # 🔍 Debug: check Gemini column mapping
-                target_row = mapping["row_header_column"]
-                target_col = mapping["column_header_column"]
-                target_val = mapping["value_column"]
-            
-                debug_subset = result_df.query(f"{target_row} == 'East' and {target_col} == 'Channel A'")
-            
-                st.subheader("🧪 Debug: Channel A + East Records")
-                st.dataframe(debug_subset)
-            
-                if not debug_subset.empty:
-                    st.write("✅ Row Count for East + Channel A:", len(debug_subset))
-                    st.write("✅ Manual AVG:", pd.to_numeric(debug_subset[target_val], errors="coerce").mean())
-                else:
-                    st.warning("⚠️ No records found for 'Channel A' and 'East' in result_df.")
-            
-            except Exception as e:
-                st.error(f"Supabase query failed: {e}")
-                st.stop()
-            
-            if result_df.empty:
-                st.warning("No matching data found in Supabase.")
-                st.stop()
-            
-            agg_func = "sum" if operation == "sum" else "mean"
-            updated_df = result_df.groupby(
-                [mapping["row_header_column"], mapping["column_header_column"]]
-            )[mapping["value_column"]].agg(agg_func).round(2).reset_index()
-            
-            final_df = updated_df.pivot(
-                index=mapping["row_header_column"],
-                columns=mapping["column_header_column"],
-                values=mapping["value_column"]
-            ).reset_index()
-            
-            st.subheader("📥 Updated Excel Output")
-            st.dataframe(final_df, use_container_width=True)
-            
-            def to_excel_download(df):
-                output = BytesIO()
-                with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                    df.to_excel(writer, index=False)
-                return output.getvalue()
-            
-            st.download_button(
-                label="Download Updated Excel",
-                data=to_excel_download(final_df),
-                file_name="updated_sales.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
+        st.download_button(
+            label="Download Updated Excel",
+            data=to_excel_download(final_df),
+            file_name="updated_sales.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
