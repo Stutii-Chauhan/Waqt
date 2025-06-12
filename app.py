@@ -55,7 +55,7 @@ def process_table(df_partial_raw):
     df_long.rename(columns={row_header: "RowHeader"}, inplace=True)
     return df, df_long
 
-# --- Main App ---
+# --- Upload File ---
 uploaded_file = st.file_uploader("Step 1: Upload your Excel file", type=["xlsx"])
 
 if uploaded_file:
@@ -67,26 +67,25 @@ if uploaded_file:
     table_blocks = split_dataframe_by_blank_rows(df_raw)
     table_dfs = []
 
-    # Preview each table
-    for i, (start_row, raw_block) in enumerate(table_blocks, start=1):
-        df_clean, df_long = process_table(raw_block)
-        table_dfs.append(df_clean)
-        st.subheader(f"🔹 Preview: Table {i} from {selected_sheet} (rows {start_row}-{start_row + len(raw_block)-1})")
-        st.dataframe(df_clean.head(10), use_container_width=True)
-
     # User prompts input
     user_query = st.text_input(
         "Step 2: Enter one prompt per table (separated by `;`)",
         placeholder="e.g. Show average sales by region; Show revenue by gender"
     )
 
+    prompts = [p.strip() for p in user_query.split(";") if p.strip()]
+
     if user_query and st.button("Start"):
-        prompts = [p.strip() for p in user_query.split(";") if p.strip()]
-        if len(prompts) != len(table_dfs):
-            st.error(f"🛑 You entered {len(prompts)} prompt(s) for {len(table_dfs)} table(s). Please match the count.")
+        if len(prompts) != len(table_blocks):
+            st.error(f"🛑 You entered {len(prompts)} prompt(s) for {len(table_blocks)} table(s). Please match the count.")
             st.stop()
 
-        # Column descriptions and price rules
+    for i, ((start_row, raw_block), prompt_text) in enumerate(zip(table_blocks, prompts), start=1):
+        df_clean, df_long = process_table(raw_block)
+        table_dfs.append(df_clean)
+
+        st.subheader(f"🔹 Preview: Table {i} from {selected_sheet} (rows {start_row}-{start_row + len(raw_block)-1})")
+        st.dataframe(df_clean.head(10), use_container_width=True)
 
         column_info = {
                     "brand": "Product's brand group (Group 1, Group 2, Group 3)",
@@ -184,7 +183,11 @@ if uploaded_file:
 
             with st.spinner("Sending to Gemini..."):
                 response = model.generate_content(prompt)
-            sql_query = response.text.strip().strip("`").rstrip(";")
+            sql_query = response.text.strip().strip("`").strip()
+            if sql_query.lower().startswith("sql"):
+                sql_query = sql_query[3:].strip()  # REMOVE 'sql'
+            sql_query = sql_query.rstrip(";")
+
 
             with st.expander("Generated SQL Query"):
                 st.code(sql_query, language="sql")
