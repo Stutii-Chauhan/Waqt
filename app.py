@@ -134,20 +134,23 @@ Only return a JSON object. Do NOT explain.
             filters = mapping.get("filters", {})
             operation = mapping.get("operation", "sum").lower()
 
+            st.write("Excel RowHeader filter:", df[row_header].dropna().unique().tolist())
+            st.write("Excel ColumnHeader filter:", column_headers)
+
             query = supabase.table(mapping["table"]).select(
                 f"{mapping['row_header_column']}, {mapping['column_header_column']}, {mapping['value_column']}"
             )
 
-            # Add filters from Gemini + Excel limits
             for key, val in filters.items():
-                query = query.eq(key, str(val).strip().title())
+                query = query.eq(key, str(val).strip())
 
-            query = query.in_(mapping["row_header_column"], df[row_header].dropna().unique().tolist())
-            query = query.in_(mapping["column_header_column"], column_headers)
+            query = query.in_(mapping["row_header_column"], [v.strip() for v in df[row_header].dropna().unique()])
+            query = query.in_(mapping["column_header_column"], [v.strip() for v in column_headers])
 
             try:
                 result = query.execute()
                 result_df = pd.DataFrame(result.data)
+                st.write("Raw Result from Supabase:", result_df)
             except Exception as e:
                 st.error(f"❌ Supabase query failed: {e}")
                 st.stop()
