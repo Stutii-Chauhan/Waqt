@@ -138,19 +138,30 @@ Only return a JSON object. Do NOT explain.
                 .eq(mapping["row_header_column"], str(row_val).strip().title())
                 .eq(mapping["column_header_column"], str(col_val).strip().title())
             )
+        
             if "filters" in mapping:
                 for k, v in mapping["filters"].items():
                     query = query.eq(k, str(v).strip().title())
-
+        
             try:
                 res = query.execute()
             except Exception as e:
                 st.error(f"❌ Supabase query failed: {e}")
                 return None
+        
+            values = [r[mapping["value_column"]] for r in res.data] if res.data else []
+        
+            # Handle operation
+            operation = mapping.get("operation", "sum").lower()
+        
+            if operation == "sum":
+                return sum(values) if values else None
+            elif operation == "average":
+                return round(sum(values) / len(values), 2) if values else None
+            else:
+                # Placeholder for unsupported ops (to be handled in Step 3)
+                return None
 
-            if res.data:
-                return sum([r[mapping["value_column"]] for r in res.data])
-            return None
 
         st.warning(f"📡 Querying table: {mapping['table']}")
 
