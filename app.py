@@ -71,7 +71,6 @@ if uploaded_file:
     "region": "Geographic region (North, East, South1 etc.)",
     "itemnumber": "SKU or item ID",
     "product_segment": "Watch category (Smart, Premium, Mainline Analog)",
-    "price_band": "Price range",
     "ucp_final": "Numerical price value",
     "bday_trans": "Was it a birthday campaign? (Y/N)",
     "anniv_trans": "Was it an anniversary campaign? (Y/N)",
@@ -83,8 +82,7 @@ if uploaded_file:
     "value_masked": "Transaction revenue",
     "qty_masked": "Units sold"
 }
-column_description_text = "
-".join([f"- {k}: {v}" for k, v in column_info.items()])
+column_description_text = "\\n".join([f"- {k}: {v}" for k, v in column_info.items()])
 
 prompt = f"""
 You are a PostgreSQL expert.
