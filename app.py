@@ -60,31 +60,32 @@ if uploaded_file:
 
     sample_json = json.dumps(df_long.head(5).to_dict(orient="records"), indent=2)
 
+    # --- User Query Input ---
     user_query = st.text_input("Step 2: What do you want to update or calculate in this sheet?")
 
     if user_query and st.button("Start"):
         column_info = {
-    "brand": "Product's brand group (Group 1, Group 2, Group 3)",
-    "product_gender": "Product gender (P, O, G, L, U)",
-    "billdate": "Date of transaction",
-    "channel": "Sales channel (Channel A, Channel B, Channel C)",
-    "region": "Geographic region (North, East, South1 etc.)",
-    "itemnumber": "SKU or item ID",
-    "product_segment": "Watch category (Smart, Premium, Mainline Analog)",
-    "ucp_final": "Numerical price value",
-    "bday_trans": "Was it a birthday campaign? (Y/N)",
-    "anniv_trans": "Was it an anniversary campaign? (Y/N)",
-    "customer_gender": "Customer's gender (Male, Female)",
-    "enc_ftd": "Customer's first transaction date",
-    "channel_ftd": "Date of First transaction on that channel",
-    "brand_ftd": "Date of First transaction with brand",
-    "customer_masked": "Masked customer ID",
-    "value_masked": "Transaction revenue",
-    "qty_masked": "Units sold"
-}
-column_description_text = "\\n".join([f"- {k}: {v}" for k, v in column_info.items()])
+            "brand": "Product's brand group (Group 1, Group 2, Group 3)",
+            "product_gender": "Product gender (P, O, G, L, U)",
+            "billdate": "Date of transaction",
+            "channel": "Sales channel (Channel A, Channel B, Channel C)",
+            "region": "Geographic region (North, East, South1 etc.)",
+            "itemnumber": "SKU or item ID",
+            "product_segment": "Watch category (Smart, Premium, Mainline Analog)",
+            "ucp_final": "Numerical price value",
+            "bday_trans": "Was it a birthday campaign? (Y/N)",
+            "anniv_trans": "Was it an anniversary campaign? (Y/N)",
+            "customer_gender": "Customer's gender (Male, Female)",
+            "enc_ftd": "Customer's first transaction date",
+            "channel_ftd": "Date of First transaction on that channel",
+            "brand_ftd": "Date of First transaction with brand",
+            "customer_masked": "Masked customer ID",
+            "value_masked": "Transaction revenue",
+            "qty_masked": "Units sold"
+        }
+        column_description_text = "\n".join([f"- {k}: {v}" for k, v in column_info.items()])
 
-prompt = f"""
+        prompt = f"""
 You are a PostgreSQL expert.
 
 Given the user query and the sample Excel structure (in JSON), generate a SQL query to get the required data from the table `toy_cleaned`.
@@ -110,7 +111,6 @@ Output only the SQL query. Do NOT explain anything.
 
         st.subheader("🧠 Gemini SQL Output")
         st.code(sql_query, language="sql")
-
         st.warning("⚠️ Ensure your Supabase has an RPC function called 'run_sql' that accepts a 'query' parameter")
 
         try:
@@ -124,9 +124,13 @@ Output only the SQL query. Do NOT explain anything.
             st.warning("No matching data found in Supabase.")
             st.stop()
 
-        # Pivot result to original format if 3 columns returned
+        # --- Pivot result if needed ---
         if result_df.shape[1] == 3:
-            final_df = result_df.pivot(index=result_df.columns[0], columns=result_df.columns[1], values=result_df.columns[2]).reset_index()
+            final_df = result_df.pivot(
+                index=result_df.columns[0],
+                columns=result_df.columns[1],
+                values=result_df.columns[2]
+            ).reset_index()
         else:
             final_df = result_df
 
