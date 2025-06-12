@@ -84,33 +84,43 @@ if uploaded_file:
             "qty_masked": "Units sold"
         }
         column_description_text = "\n".join([f"- {k}: {v}" for k, v in column_info.items()])
-
+     
         prompt = f"""
-You are a smart assistant that maps Excel structures to database tables or calculations.
+        You are a smart assistant that maps Excel templates to database queries using the table schema and Excel layout.
+        
+        📝 Instructions:
+        - The **first column** in the Excel template is always the row header (e.g., Region, Gender, etc.)
+        - The remaining columns are column headers (e.g., Channel, Month)
+        - The value to fetch from the database is usually `"value_masked"` unless the user asks for units (`qty_masked`) or price (`ucp_final`)
+        - If the user asks for a calculation (like average, sum, difference), extract that as the operation
+        - The default operation is `"sum"` if nothing is mentioned
+        - If filters like `"Region": "East"` or `"Product Segment": "Premium"` are mentioned in the user query, include them under `filters`
+        
+        🎯 Your job is to return only this JSON structure:
+        {{
+          "table": "toy_cleaned",
+          "row_header_column": "...",       ← from Excel first column (e.g., region)
+          "column_header_column": "...",    ← from other columns in Excel (e.g., channel)
+          "value_column": "...",            ← usually "value_masked"
+          "operation": "sum",               ← or "average", etc.
+          "filters": {{ ... }}              ← if any, based on the user's question
+        }}
+        
+        User Query:
+        {user_query}
+        
+        Excel Data (JSON preview):
+        {sample_json}
+        
+        Available table:
+        toy_cleaned
+        
+        Table schema:
+        {column_description_text}
+        
+        Only return the JSON. Do NOT explain anything.
+        """
 
-User Query:
-{user_query}
-
-Excel Data (JSON preview):
-{sample_json}
-
-Available table:
-toy_cleaned
-
-Columns:
-{column_description_text}
-
-Return JSON in this format:
-{{
-  "table": "toy_cleaned",
-  "row_header_column": "...",
-  "column_header_column": "...",
-  "value_column": "...",
-  "operation": "sum",
-  "filters": {{ optional key-value filters like "Product Segment": "Premium" }}
-}}
-Only return a JSON object. Do NOT explain.
-"""
 
         with st.spinner("Sending structure + prompt to Gemini..."):
             response = model.generate_content(prompt)
@@ -143,8 +153,8 @@ Only return a JSON object. Do NOT explain.
             for key, val in filters.items():
                 query = query.eq(key, str(val).strip())
 
-            query = query.in_(mapping["row_header_column"], row_values)
-            query = query.in_(mapping["column_header_column"], col_values)
+            # query = query.in_(mapping["row_header_column"], row_values)
+            # query = query.in_(mapping["column_header_column"], col_values)
 
             where_clauses = [f"{k} = '{v}'" for k, v in filters.items()]
             where_clauses.append(f"{mapping['row_header_column']} IN ({', '.join([repr(v) for v in row_values])})")
