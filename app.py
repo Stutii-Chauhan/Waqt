@@ -100,6 +100,23 @@ if uploaded_file:
         }
         column_description_text = "\n".join([f"- {k}: {v}" for k, v in column_info.items()])
 
+        price_filtering_rules = """
+        Price Filtering Rules:
+        
+        - Always use the numeric `ucp_final` column.
+        - Convert shorthand like “10k”, “25K” to numeric values (e.g., 10k = 10000).
+        - If the user mentions a price range (e.g., “10k–12k”), write: `ucp_final BETWEEN 10000 AND 12000`.
+        - If the user says “below 12000”, “under 12k”, write: `ucp_final < 12000`.
+        - If the user says “above 25000”, “more than 25k”, write: `ucp_final > 25000`.
+        - Handle user typos like “10k -12k”, “10k – 12k”, “10 k to 12 k” as valid ranges.
+        - Never use `ucp_final = '10K–12K'` or any string literal comparison for price.
+        
+        Important:
+        - All price-related filtering must be done using the numeric `ucp_final` column only.
+        - Convert “10k”, “25K”, etc. to thousands: 10k = 10000.
+        - Apply filters using: `ucp_final BETWEEN ...`, `ucp_final < ...`, or `ucp_final > ...` — never as strings.
+        """
+
         prompt = f"""
         You are a PostgreSQL expert.
         
@@ -115,6 +132,8 @@ if uploaded_file:
         - Do NOT use JOIN with VALUES. Instead, use simple WHERE ... IN (...) filtering based on the RowHeader and ColumnHeader values.
         - Return a 3-column result (RowHeader, ColumnHeader, Aggregated Value)
         - Write a SQL query using correct table and column names from schema
+
+        {price_filtering_rules}
         
         User Query:
         {user_query}
