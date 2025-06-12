@@ -77,70 +77,65 @@ if uploaded_file:
 
     if user_query and st.button("Start"):
         if len(prompts) != len(table_blocks):
-            st.error(f"🛑 You entered {len(prompts)} prompt(s) for {len(table_blocks)} table(s). Please match the count.")
+            st.error(f"🚩 You entered {len(prompts)} prompt(s) for {len(table_blocks)} table(s). Please match the count.")
             st.stop()
 
-    for i, ((start_row, raw_block), prompt_text) in enumerate(zip(table_blocks, prompts), start=1):
-        df_clean, df_long = process_table(raw_block)
-        table_dfs.append(df_clean)
+        for i, ((start_row, raw_block), prompt_text) in enumerate(zip(table_blocks, prompts), start=1):
+            df_clean, df_long = process_table(raw_block)
+            table_dfs.append(df_clean)
 
-        st.subheader(f"🔹 Preview: Table {i} from {selected_sheet} (rows {start_row}-{start_row + len(raw_block)-1})")
-        st.dataframe(df_clean.head(10), use_container_width=True)
+            st.subheader(f"🔹 Preview: Table {i} from {selected_sheet} (rows {start_row}-{start_row + len(raw_block)-1})")
+            st.dataframe(df_clean.head(10), use_container_width=True)
 
-        column_info = {
-                    "brand": "Product's brand group (Group 1, Group 2, Group 3)",
-                    "product_gender": "Product gender (P, O, G, L, U)",
-                    "billdate": "Date of transaction",
-                    "channel": "Sales channel (Channel A, Channel B, Channel C)",
-                    "region": "Geographic region (North, East, South1 etc.)",
-                    "itemnumber": "SKU or item ID",
-                    "product_segment": "Watch category (Smart, Premium, Mainline Analog)",
-                    "ucp_final": "Numerical price value",
-                    "bday_trans": "Was it a birthday campaign? (Y/N)",
-                    "anniv_trans": "Was it an anniversary campaign? (Y/N)",
-                    "customer_gender": "Customer's gender (Male, Female)",
-                    "enc_ftd": "Customer's first transaction date",
-                    "channel_ftd": "Date of First transaction on that channel",
-                    "brand_ftd": "Date of First transaction with brand",
-                    "customer_masked": "Masked customer ID",
-                    "value_masked": "Transaction revenue",
-                    "qty_masked": "Units sold"
-                }
-        column_description_text = "\n".join([f"- {k}: {v}" for k, v in column_info.items()])
+            column_info = {
+                "brand": "Product's brand group (Group 1, Group 2, Group 3)",
+                "product_gender": "Product gender (P, O, G, L, U)",
+                "billdate": "Date of transaction",
+                "channel": "Sales channel (Channel A, Channel B, Channel C)",
+                "region": "Geographic region (North, East, South1 etc.)",
+                "itemnumber": "SKU or item ID",
+                "product_segment": "Watch category (Smart, Premium, Mainline Analog)",
+                "ucp_final": "Numerical price value",
+                "bday_trans": "Was it a birthday campaign? (Y/N)",
+                "anniv_trans": "Was it an anniversary campaign? (Y/N)",
+                "customer_gender": "Customer's gender (Male, Female)",
+                "enc_ftd": "Customer's first transaction date",
+                "channel_ftd": "Date of First transaction on that channel",
+                "brand_ftd": "Date of First transaction with brand",
+                "customer_masked": "Masked customer ID",
+                "value_masked": "Transaction revenue",
+                "qty_masked": "Units sold"
+            }
+            column_description_text = "\n".join([f"- {k}: {v}" for k, v in column_info.items()])
 
-        price_filtering_rules = """
-        Price Filtering Rules:
-        
-        - Always use the numeric `ucp_final` column.
-        - Convert shorthand like “10k”, “25K” to numeric values (e.g., 10k = 10000).
-        - If the user mentions a price range (e.g., “10k–12k”), write: `ucp_final BETWEEN 10000 AND 12000`.
-        - If the user says “below 12000”, “under 12k”, write: `ucp_final < 12000`.
-        - If the user says “above 25000”, “more than 25k”, write: `ucp_final > 25000`.
-        - Handle user typos like “10k -12k”, “10k – 12k”, “10 k to 12 k” as valid ranges.
-        - Never use `ucp_final = '10K–12K'` or any string literal comparison for price.
-        
-        Important:
-        - All price-related filtering must be done using the numeric `ucp_final` column only.
-        - Convert “10k”, “25K”, etc. to thousands: 10k = 10000.
-        - Apply filters using: `ucp_final BETWEEN ...`, `ucp_final < ...`, or `ucp_final > ...` — never as strings.
-        """
+            price_filtering_rules = """
+            Price Filtering Rules:
 
-        for idx, (df_table, prompt_text) in enumerate(zip(table_dfs, prompts), start=1):
-            st.markdown(f"### 🔹 Table {idx}")
+            - Always use the numeric `ucp_final` column.
+            - Convert shorthand like “10k”, “25K” to numeric values (e.g., 10k = 10000).
+            - If the user mentions a price range (e.g., “10k–12k”), write: `ucp_final BETWEEN 10000 AND 12000`.
+            - If the user says “below 12000”, “under 12k”, write: `ucp_final < 12000`.
+            - If the user says “above 25000”, “more than 25k”, write: `ucp_final > 25000`.
+            - Handle user typos like “10k -12k”, “10k – 12k”, “10 k to 12 k” as valid ranges.
+            - Never use `ucp_final = '10K–12K'` or any string literal comparison for price.
+
+            Important:
+            - All price-related filtering must be done using the numeric `ucp_final` column only.
+            - Convert “10k”, “25K”, etc. to thousands: 10k = 10000.
+            - Apply filters using: `ucp_final BETWEEN ...`, `ucp_final < ...`, or `ucp_final > ...` — never as strings.
+            """
+
             # Ensure headers are clean
-            headers = df_table.columns.str.strip().str.replace(" ", "_")
-            df_table.columns = headers
-            df_table = df_table.fillna("")
-            # Title-case strings
-            for col in df_table.select_dtypes(include="object").columns:
-                df_table[col] = df_table[col].astype(str).str.title()
+            headers = df_clean.columns.str.strip().str.replace(" ", "_")
+            df_clean.columns = headers
+            df_clean = df_clean.fillna("")
+            for col in df_clean.select_dtypes(include="object").columns:
+                df_clean[col] = df_clean[col].astype(str).str.title()
 
-            # Melt to long form
-            row_header = df_table.columns[0]
-            df_long = df_table.melt(id_vars=[row_header], var_name="ColumnHeader", value_name="Value")
+            row_header = df_clean.columns[0]
+            df_long = df_clean.melt(id_vars=[row_header], var_name="ColumnHeader", value_name="Value")
             df_long.rename(columns={row_header: "RowHeader"}, inplace=True)
 
-            # Build sample JSON
             sample_rows = []
             for r in df_long["RowHeader"].unique():
                 for c in df_long["ColumnHeader"].unique():
@@ -150,15 +145,14 @@ if uploaded_file:
             balanced_sample_df = pd.concat(sample_rows)
             sample_json = json.dumps(balanced_sample_df.to_dict(orient="records"), indent=2)
 
-            # Compose Gemini prompt
             prompt = f"""
                 You are a PostgreSQL expert.
-                
+
                 The user has uploaded an Excel sheet that was converted to a long-form JSON structure where:
                 - `RowHeader` contains values from one categorical field (e.g., region, gender, etc.)
                 - `ColumnHeader` contains values from another categorical field (e.g., channel, segment, etc.)
                 - `Value` is empty, and the user has asked for it to be calculated (e.g., average revenue)
-                
+
                 Your job:
                 - Interpret the user's query
                 - Detect the correct row, column, and value fields in the table `toy_cleaned`
@@ -185,14 +179,12 @@ if uploaded_file:
                 response = model.generate_content(prompt)
             sql_query = response.text.strip().strip("`").strip()
             if sql_query.lower().startswith("sql"):
-                sql_query = sql_query[3:].strip()  # REMOVE 'sql'
+                sql_query = sql_query[3:].strip()
             sql_query = sql_query.rstrip(";")
-
 
             with st.expander("Generated SQL Query"):
                 st.code(sql_query, language="sql")
 
-            # Execute SQL
             try:
                 result = supabase.rpc("run_sql", {"query": sql_query}).execute()
                 raw_data = result.data
@@ -202,13 +194,12 @@ if uploaded_file:
                     df_result = pd.DataFrame(raw_data)
             except Exception as e:
                 st.error(f"SQL execution failed: {e}")
-                st.stop()
+                continue
 
             if df_result.empty:
                 st.warning("No matching data found.")
                 continue
 
-            # Pivot if 3 columns
             if df_result.shape[1] == 3:
                 final_df = df_result.pivot(
                     index=df_result.columns[0],
@@ -218,7 +209,7 @@ if uploaded_file:
             else:
                 final_df = df_result
 
-            st.subheader("📥 Updated Excel Output")
+            st.subheader("📅 Updated Excel Output")
             st.dataframe(final_df, use_container_width=True)
 
             def to_excel_download(df):
@@ -228,8 +219,8 @@ if uploaded_file:
                 return buf.getvalue()
 
             st.download_button(
-                label="Download Updated Excel",
+                label=f"Download Updated Table {i}",
                 data=to_excel_download(final_df),
-                file_name=f"updated_table_{idx}.xlsx",
+                file_name=f"updated_table_{i}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
