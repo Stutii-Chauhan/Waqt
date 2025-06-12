@@ -58,7 +58,16 @@ if uploaded_file:
     df_long = df.melt(id_vars=[row_header], var_name="ColumnHeader", value_name="Value")
     df_long.rename(columns={row_header: "RowHeader"}, inplace=True)
 
-    sample_json = json.dumps(df_long.head(5).to_dict(orient="records"), indent=2)
+    # Ensure at least one sample row per ColumnHeader (to include all columns like Channel C)
+    column_sample = []
+    
+    for col in df_long["ColumnHeader"].unique():
+        sample_rows = df_long[df_long["ColumnHeader"] == col].head(1)
+        column_sample.append(sample_rows)
+    
+    balanced_sample_df = pd.concat(column_sample)
+    sample_json = json.dumps(balanced_sample_df.to_dict(orient="records"), indent=2)
+
 
     # --- User Query Input ---
     user_query = st.text_input("Step 2: What do you want to update or calculate in this sheet?")
