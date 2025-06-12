@@ -64,6 +64,10 @@ if uploaded_file:
     selected_sheet = st.selectbox("Select a sheet to process", sheet_names)
     df_raw = pd.read_excel(uploaded_file, sheet_name=selected_sheet, header=None)
 
+    df = sheets[selected_sheet]
+    st.subheader(f"📄 Preview of Template - `{selected_sheet}`")
+    st.dataframe(df, use_container_width=True)
+
     table_blocks = split_dataframe_by_blank_rows(df_raw)
     table_dfs = []
 
