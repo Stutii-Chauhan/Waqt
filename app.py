@@ -10,9 +10,9 @@ import re
 st.set_page_config(page_title="Excel Auto-Updater for Waqt", layout="wide")
 
 # --- Environment Secrets ---
-SUPABASE_URL = st.secrets["SUPABASE_URL"]
-SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
-GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
+SUPABASE_URL = st.secrets.get("SUPABASE_URL")
+SUPABASE_KEY = st.secrets.get("SUPABASE_KEY")
+GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY")
 
 if not SUPABASE_URL or not SUPABASE_KEY or not GEMINI_API_KEY:
     st.error("Missing Supabase or Gemini credentials.")
@@ -26,42 +26,37 @@ model = genai.GenerativeModel("gemini-2.0-flash")
 # --- Title ---
 st.title("Excel Auto-Updater for Waqt")
 
-# --- Upload File ---
-uploaded_file = st.file_uploader("Step 1: Upload your Excel file", type=["xlsx"])
-
+# --- Helper Functions ---
 def split_dataframe_by_blank_rows(df):
     split_indices = df[df.isnull().all(axis=1)].index.tolist()
     blocks = []
     start_idx = 0
-
     for idx in split_indices:
         block = df.iloc[start_idx:idx]
         if not block.dropna(how="all").empty:
             blocks.append((start_idx, block.reset_index(drop=True)))
         start_idx = idx + 1
-
     if start_idx < len(df):
         block = df.iloc[start_idx:]
         if not block.dropna(how="all").empty:
             blocks.append((start_idx, block.reset_index(drop=True)))
+    return blocks
 
-    return blocks  # list of (start_row_index, df)
 
-
-def process_table(df_partial):
-    df_partial = df_partial.dropna(axis=1, how="all")
-    raw_headers = df_partial.iloc[0].fillna("Unnamed").astype(str).str.strip()
-    df_partial.columns = raw_headers
-    df_partial = df_partial[1:].reset_index(drop=True)
-
-    if df_partial.columns[0].lower() in ["", "unnamed", "nan", "none"]:
-        df_partial.columns = ["RowHeader"] + list(df_partial.columns[1:])
-
-    row_header = df_partial.columns[0]
-    df_long = df_partial.melt(id_vars=[row_header], var_name="ColumnHeader", value_name="Value")
+def process_table(df_partial_raw):
+    df_partial_raw = df_partial_raw.dropna(axis=1, how="all")
+    headers = df_partial_raw.iloc[0].fillna("Unnamed").astype(str).str.strip()
+    df = df_partial_raw[1:].copy().reset_index(drop=True)
+    df.columns = headers
+    if df.columns[0].lower() in ["", "unnamed", "nan", "none"]:
+        df.columns.values[0] = "RowHeader"
+    row_header = df.columns[0]
+    df_long = df.melt(id_vars=[row_header], var_name="ColumnHeader", value_name="Value")
     df_long.rename(columns={row_header: "RowHeader"}, inplace=True)
+    return df, df_long
 
-    return df_partial, df_long
+# --- Main App ---
+uploaded_file = st.file_uploader("Step 1: Upload your Excel file", type=["xlsx"])
 
 if uploaded_file:
     sheets = pd.read_excel(uploaded_file, sheet_name=None)
@@ -70,64 +65,48 @@ if uploaded_file:
     df_raw = pd.read_excel(uploaded_file, sheet_name=selected_sheet, header=None)
 
     table_blocks = split_dataframe_by_blank_rows(df_raw)
+    table_dfs = []
 
-    for i, (start_row, table_df) in enumerate(table_blocks, start=1):
-        if table_df.empty:
-            st.warning(f"⚠️ Table {i} is empty. Skipping.")
-            continue
+    # Preview each table
+    for i, (start_row, raw_block) in enumerate(table_blocks, start=1):
+        df_clean, df_long = process_table(raw_block)
+        table_dfs.append(df_clean)
+        st.subheader(f"🔹 Preview: Table {i} from {selected_sheet} (rows {start_row}-{start_row + len(raw_block)-1})")
+        st.dataframe(df_clean.head(10), use_container_width=True)
 
-        table_df, df_long = process_table(table_df)
-
-        st.subheader(f"🔹 Preview: Table {i} from {selected_sheet}")
-        st.dataframe(table_df.head(10), use_container_width=True)
-
-        # Ensure at least one sample row for each (RowHeader, ColumnHeader) pair
-        sample_rows = []
-        row_vals = df_long["RowHeader"].unique()
-        col_vals = df_long["ColumnHeader"].unique()
-
-        for row in row_vals:
-            for col in col_vals:
-                match = df_long[(df_long["RowHeader"] == row) & (df_long["ColumnHeader"] == col)]
-                if not match.empty:
-                    sample_rows.append(match.head(1))
-
-        balanced_sample_df = pd.concat(sample_rows)
-        sample_json = json.dumps(balanced_sample_df.to_dict(orient="records"), indent=2)
-
-        # Store or use sample_json as needed per table
-
-    # --- User Query Input ---
-    user_query = st.text_input("Step 2: Enter one prompt per table (separated by `;`)",
-                               placeholder="e.g. Show average sales by region; Show revenue by gender"
+    # User prompts input
+    user_query = st.text_input(
+        "Step 2: Enter one prompt per table (separated by `;`)",
+        placeholder="e.g. Show average sales by region; Show revenue by gender"
     )
 
-    if user_prompt_input and st.button("Start"):
-        prompts = [p.strip() for p in user_prompt_input.split(";") if p.strip()]
-        
+    if user_query and st.button("Start"):
+        prompts = [p.strip() for p in user_query.split(";") if p.strip()]
         if len(prompts) != len(table_dfs):
-            st.error(f"🛑 You entered {len(prompts)} prompts for {len(table_dfs)} table(s). Please match the count.")
+            st.error(f"🛑 You entered {len(prompts)} prompt(s) for {len(table_dfs)} table(s). Please match the count.")
             st.stop()
-            
+
+        # Column descriptions and price rules
+
         column_info = {
-            "brand": "Product's brand group (Group 1, Group 2, Group 3)",
-            "product_gender": "Product gender (P, O, G, L, U)",
-            "billdate": "Date of transaction",
-            "channel": "Sales channel (Channel A, Channel B, Channel C)",
-            "region": "Geographic region (North, East, South1 etc.)",
-            "itemnumber": "SKU or item ID",
-            "product_segment": "Watch category (Smart, Premium, Mainline Analog)",
-            "ucp_final": "Numerical price value",
-            "bday_trans": "Was it a birthday campaign? (Y/N)",
-            "anniv_trans": "Was it an anniversary campaign? (Y/N)",
-            "customer_gender": "Customer's gender (Male, Female)",
-            "enc_ftd": "Customer's first transaction date",
-            "channel_ftd": "Date of First transaction on that channel",
-            "brand_ftd": "Date of First transaction with brand",
-            "customer_masked": "Masked customer ID",
-            "value_masked": "Transaction revenue",
-            "qty_masked": "Units sold"
-        }
+                    "brand": "Product's brand group (Group 1, Group 2, Group 3)",
+                    "product_gender": "Product gender (P, O, G, L, U)",
+                    "billdate": "Date of transaction",
+                    "channel": "Sales channel (Channel A, Channel B, Channel C)",
+                    "region": "Geographic region (North, East, South1 etc.)",
+                    "itemnumber": "SKU or item ID",
+                    "product_segment": "Watch category (Smart, Premium, Mainline Analog)",
+                    "ucp_final": "Numerical price value",
+                    "bday_trans": "Was it a birthday campaign? (Y/N)",
+                    "anniv_trans": "Was it an anniversary campaign? (Y/N)",
+                    "customer_gender": "Customer's gender (Male, Female)",
+                    "enc_ftd": "Customer's first transaction date",
+                    "channel_ftd": "Date of First transaction on that channel",
+                    "brand_ftd": "Date of First transaction with brand",
+                    "customer_masked": "Masked customer ID",
+                    "value_masked": "Transaction revenue",
+                    "qty_masked": "Units sold"
+                }
         column_description_text = "\n".join([f"- {k}: {v}" for k, v in column_info.items()])
 
         price_filtering_rules = """
@@ -147,42 +126,33 @@ if uploaded_file:
         - Apply filters using: `ucp_final BETWEEN ...`, `ucp_final < ...`, or `ucp_final > ...` — never as strings.
         """
 
-        for i, (table_df, prompt_text) in enumerate(zip(table_dfs, prompts), start=1):
-                st.markdown(f"### 🔹 Table {i}")
-        
-                # Fix headers
-                raw_headers = table_df.iloc[0].fillna("Unnamed").astype(str).str.strip()
-                table_df.columns = raw_headers
-                table_df = table_df[1:].reset_index(drop=True)
-        
-                if table_df.columns[0].lower() in ["", "unnamed", "nan", "none"]:
-                    table_df.columns.values[0] = "RowHeader"
-                else:
-                    table_df.columns.values[0] = table_df.columns[0].title().replace(" ", "_")
-        
-                row_header = table_df.columns[0]
-                table_df = table_df.fillna("")
-        
-                # Format string columns
-                for col in table_df.columns:
-                    if table_df[col].dtype == "object":
-                        table_df[col] = table_df[col].astype(str).str.title()
-        
-                # Melt to long form
-                df_long = table_df.melt(id_vars=[row_header], var_name="ColumnHeader", value_name="Value")
-                df_long.rename(columns={row_header: "RowHeader"}, inplace=True)
-        
-                # Sample JSON
-                sample_rows = []
-                for row in df_long["RowHeader"].unique():
-                    for col in df_long["ColumnHeader"].unique():
-                        match = df_long[(df_long["RowHeader"] == row) & (df_long["ColumnHeader"] == col)]
-                        if not match.empty:
-                            sample_rows.append(match.head(1))
-                balanced_sample_df = pd.concat(sample_rows)
-                sample_json = json.dumps(balanced_sample_df.to_dict(orient="records"), indent=2)
-        
-                prompt = f"""
+        for idx, (df_table, prompt_text) in enumerate(zip(table_dfs, prompts), start=1):
+            st.markdown(f"### 🔹 Table {idx}")
+            # Ensure headers are clean
+            headers = df_table.columns.str.strip().str.replace(" ", "_")
+            df_table.columns = headers
+            df_table = df_table.fillna("")
+            # Title-case strings
+            for col in df_table.select_dtypes(include="object").columns:
+                df_table[col] = df_table[col].astype(str).str.title()
+
+            # Melt to long form
+            row_header = df_table.columns[0]
+            df_long = df_table.melt(id_vars=[row_header], var_name="ColumnHeader", value_name="Value")
+            df_long.rename(columns={row_header: "RowHeader"}, inplace=True)
+
+            # Build sample JSON
+            sample_rows = []
+            for r in df_long["RowHeader"].unique():
+                for c in df_long["ColumnHeader"].unique():
+                    m = df_long[(df_long["RowHeader"] == r) & (df_long["ColumnHeader"] == c)]
+                    if not m.empty:
+                        sample_rows.append(m.head(1))
+            balanced_sample_df = pd.concat(sample_rows)
+            sample_json = json.dumps(balanced_sample_df.to_dict(orient="records"), indent=2)
+
+            # Compose Gemini prompt
+            prompt = f"""
                 You are a PostgreSQL expert.
                 
                 The user has uploaded an Excel sheet that was converted to a long-form JSON structure where:
@@ -197,75 +167,66 @@ if uploaded_file:
                 - Do NOT use JOIN with VALUES. Instead, use simple WHERE ... IN (...) filtering based on the RowHeader and ColumnHeader values.
                 - Return a 3-column result (RowHeader, ColumnHeader, Aggregated Value)
                 - Write a SQL query using correct table and column names from schema
-        
-                {price_filtering_rules}
-                
-                User Query:
-                {user_query}
-                
-                Excel JSON Preview:
-                {sample_json}
-                
-                Available Table: toy_cleaned
-                
-                Schema (column names and descriptions):
-                {column_description_text}
-                
-                Only return a SQL query. Do not explain anything.
-                """
-        
-                with st.spinner("Sending structure + query to Gemini..."):
-                    response = model.generate_content(prompt)
-        
-                sql_query = response.text.strip().strip("`").strip()
-                if sql_query.lower().startswith("sql"):
-                    sql_query = sql_query[3:].strip()
-                sql_query = sql_query.rstrip(";")
-        
-        
-                with st.expander("Genreated SQL Query"):
-                    st.code(sql_query, language="sql")
-        
-        
-                try:
-                    result = supabase.rpc("run_sql", {"query": sql_query}).execute()
-                    raw_data = result.data
-                    
-                    if isinstance(raw_data, list) and "result" in raw_data[0]:
-                        flattened_data = raw_data[0]["result"]
-                        result_df = pd.DataFrame(flattened_data)
-                    else:
-                        result_df = pd.DataFrame(raw_data)
-                except Exception as e:
-                    st.error(f"SQL execution failed: {e}")
-                    st.stop()
-        
-                if result_df.empty:
-                    st.warning("No matching data found in Supabase.")
-                    st.stop()
-        
-                # --- Pivot result if needed ---
-                if result_df.shape[1] == 3:
-                    final_df = result_df.pivot(
-                        index=result_df.columns[0],
-                        columns=result_df.columns[1],
-                        values=result_df.columns[2]
-                    ).reset_index()
+
+            {price_filtering_rules}
+
+            User Query:
+            {prompt_text}
+
+            Excel JSON Preview:
+            {sample_json}
+
+            Schema:
+            {column_description_text}
+
+            Only return a SQL query. Do not explain anything.
+            """
+
+            with st.spinner("Sending to Gemini..."):
+                response = model.generate_content(prompt)
+            sql_query = response.text.strip().strip("`").rstrip(";")
+
+            with st.expander("Generated SQL Query"):
+                st.code(sql_query, language="sql")
+
+            # Execute SQL
+            try:
+                result = supabase.rpc("run_sql", {"query": sql_query}).execute()
+                raw_data = result.data
+                if isinstance(raw_data, list) and "result" in raw_data[0]:
+                    df_result = pd.DataFrame(raw_data[0]["result"])
                 else:
-                    final_df = result_df
-        
-                st.subheader("📥 Updated Excel Output")
-                st.dataframe(final_df, use_container_width=True)
-        
-                def to_excel_download(df):
-                    output = BytesIO()
-                    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                        df.to_excel(writer, index=False)
-                    return output.getvalue()
-        
-                st.download_button(
-                    label="Download Updated Excel",
-                    data=to_excel_download(final_df),
-                    file_name="updated_sales.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
+                    df_result = pd.DataFrame(raw_data)
+            except Exception as e:
+                st.error(f"SQL execution failed: {e}")
+                st.stop()
+
+            if df_result.empty:
+                st.warning("No matching data found.")
+                continue
+
+            # Pivot if 3 columns
+            if df_result.shape[1] == 3:
+                final_df = df_result.pivot(
+                    index=df_result.columns[0],
+                    columns=df_result.columns[1],
+                    values=df_result.columns[2]
+                ).reset_index()
+            else:
+                final_df = df_result
+
+            st.subheader("📥 Updated Excel Output")
+            st.dataframe(final_df, use_container_width=True)
+
+            def to_excel_download(df):
+                buf = BytesIO()
+                with pd.ExcelWriter(buf, engine='openpyxl') as writer:
+                    df.to_excel(writer, index=False)
+                return buf.getvalue()
+
+            st.download_button(
+                label="Download Updated Excel",
+                data=to_excel_download(final_df),
+                file_name=f"updated_table_{idx}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
