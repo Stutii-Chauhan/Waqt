@@ -137,6 +137,9 @@ Only return a JSON object. Do NOT explain.
             st.write("Excel RowHeader filter:", df[row_header].dropna().unique().tolist())
             st.write("Excel ColumnHeader filter:", column_headers)
 
+            row_values = [v.strip() for v in df[row_header].dropna().unique()]
+            col_values = [v.strip() for v in column_headers]
+
             query = supabase.table(mapping["table"]).select(
                 f"{mapping['row_header_column']}, {mapping['column_header_column']}, {mapping['value_column']}"
             )
@@ -144,8 +147,20 @@ Only return a JSON object. Do NOT explain.
             for key, val in filters.items():
                 query = query.eq(key, str(val).strip())
 
-            query = query.in_(mapping["row_header_column"], [v.strip() for v in df[row_header].dropna().unique()])
-            query = query.in_(mapping["column_header_column"], [v.strip() for v in column_headers])
+            query = query.in_(mapping["row_header_column"], row_values)
+            query = query.in_(mapping["column_header_column"], col_values)
+
+            # --- SQL Preview ---
+            where_clauses = [f"{k} = '{v}'" for k, v in filters.items()]
+            where_clauses.append(f"{mapping['row_header_column']} IN ('{', '.join(row_values)}')")
+            where_clauses.append(f"{mapping['column_header_column']} IN ('{', '.join(col_values)}')")
+
+            sql_preview = f"""
+SELECT {mapping['row_header_column']}, {mapping['column_header_column']}, {mapping['value_column']}
+FROM {mapping['table']}
+WHERE {' AND '.join(where_clauses)}
+"""
+            st.code(sql_preview, language="sql")
 
             try:
                 result = query.execute()
