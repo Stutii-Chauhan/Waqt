@@ -58,7 +58,7 @@ if uploaded_file:
     df_long = df.melt(id_vars=[row_header], var_name="ColumnHeader", value_name="Value")
     df_long.rename(columns={row_header: "RowHeader"}, inplace=True)
 
-    sample_csv = df_long.head(5).to_csv(index=False)
+    sample_json = json.dumps(df_long.head(5).to_dict(orient="records"), indent=2)
 
     user_query = st.text_input("Step 2: What do you want to update or calculate in this sheet?")
 
@@ -91,8 +91,8 @@ You are a smart assistant that maps Excel structures to database tables or calcu
 User Query:
 {user_query}
 
-Excel DataFrame (melted format):
-{sample_csv}
+Excel Data (JSON preview):
+{sample_json}
 
 Available table:
 toy_cleaned
@@ -118,7 +118,7 @@ Only return a JSON object. Do NOT explain.
         try:
             cleaned_json = re.sub(r"^```json|```$", "", response.text.strip(), flags=re.MULTILINE).strip()
             mapping = json.loads(cleaned_json)
-            st.success("Gemini extracted the following logic:")
+            st.subheader("🧠 Gemini Output Mapping")
             st.json(mapping)
         except Exception:
             st.error("Gemini returned invalid JSON. Please check prompt.")
@@ -126,10 +126,15 @@ Only return a JSON object. Do NOT explain.
 
         with st.spinner("Fetching aggregated data from Supabase..."):
             filters = mapping.get("filters", {})
+            st.subheader("📌 Filters applied to SQL")
+            st.write(filters)
             operation = mapping.get("operation", "sum").lower()
 
             row_values = [v.strip() for v in df[row_header].dropna().unique()]
             col_values = [v.strip() for v in column_headers]
+            st.write("Row Header Values used in SQL:", row_values)
+            st.write("Column Header Values used in SQL:", col_values)
+
 
             query = supabase.table(mapping["table"]).select(
                 f"{mapping['row_header_column']}, {mapping['column_header_column']}, {mapping['value_column']}"
@@ -155,7 +160,8 @@ WHERE {' AND '.join(where_clauses)}
             try:
                 result = query.execute()
                 result_df = pd.DataFrame(result.data)
-                st.write("Raw Result from Supabase:", result_df)
+                st.subheader("📄 Raw Supabase Result (before groupby)")
+                st.dataframe(result_df.head(20))
             except Exception as e:
                 st.error(f"Supabase query failed: {e}")
                 st.stop()
