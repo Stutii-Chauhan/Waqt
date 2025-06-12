@@ -34,54 +34,54 @@ if uploaded_file:
     sheet_names = list(sheets.keys())
     selected_sheet = st.selectbox("Select a sheet to process", sheet_names)
     df_raw = pd.read_excel(uploaded_file, sheet_name=selected_sheet, header=None)
-    
+
     # Detect blank rows and split into multiple tables
     blank_rows = df_raw[df_raw.isnull().all(axis=1)].index.tolist()
     table_starts = [0] + [i + 1 for i in blank_rows]
     table_ends = blank_rows + [len(df_raw)]
-    
+
     table_dfs = [
         df_raw.iloc[start:end].dropna(how='all').reset_index(drop=True)
         for start, end in zip(table_starts, table_ends)
     ]
 
-    if df.empty:
-        st.warning("Selected sheet is empty.")
-        st.stop()
+    for i, table_df in enumerate(table_dfs, start=1):
+        if table_df.empty:
+            st.warning(f"⚠️ Table {i} is empty. Skipping.")
+            continue
 
-    # --- Auto-fix unnamed first column ---
-    if "unnamed" in df.columns[0].lower():
-        df.columns.values[0] = "RowHeader"
-    else:
-        df.columns.values[0] = df.columns[0].title().replace(" ", "_")
+        # --- Auto-fix unnamed first column ---
+        if "unnamed" in table_df.columns[0].lower():
+            table_df.columns.values[0] = "RowHeader"
+        else:
+            table_df.columns.values[0] = table_df.columns[0].title().replace(" ", "_")
 
-    row_header = df.columns[0]
-    column_headers = df.columns[1:].tolist()
+        row_header = table_df.columns[0]
+        column_headers = table_df.columns[1:].tolist()
 
-    for col in df.columns:
-        if df[col].dtype == "object":
-            df[col] = df[col].astype(str).str.title()
+        for col in table_df.columns:
+            if table_df[col].dtype == "object":
+                table_df[col] = table_df[col].astype(str).str.title()
 
-    st.subheader(f" Preview: {selected_sheet}")
-    st.dataframe(df.head(10), use_container_width=True)
+        st.subheader(f"🔹 Preview: Table {i} from {selected_sheet}")
+        st.dataframe(table_df.head(10), use_container_width=True)
 
-    df_long = df.melt(id_vars=[row_header], var_name="ColumnHeader", value_name="Value")
-    df_long.rename(columns={row_header: "RowHeader"}, inplace=True)
+        df_long = table_df.melt(id_vars=[row_header], var_name="ColumnHeader", value_name="Value")
+        df_long.rename(columns={row_header: "RowHeader"}, inplace=True)
 
-    # Ensure at least one sample row for each (RowHeader, ColumnHeader) pair
-    sample_rows = []
-    
-    row_vals = df_long["RowHeader"].unique()
-    col_vals = df_long["ColumnHeader"].unique()
-    
-    for row in row_vals:
-        for col in col_vals:
-            match = df_long[(df_long["RowHeader"] == row) & (df_long["ColumnHeader"] == col)]
-            if not match.empty:
-                sample_rows.append(match.head(1))
-    
-    balanced_sample_df = pd.concat(sample_rows)
-    sample_json = json.dumps(balanced_sample_df.to_dict(orient="records"), indent=2)
+        # Ensure at least one sample row for each (RowHeader, ColumnHeader) pair
+        sample_rows = []
+        row_vals = df_long["RowHeader"].unique()
+        col_vals = df_long["ColumnHeader"].unique()
+
+        for row in row_vals:
+            for col in col_vals:
+                match = df_long[(df_long["RowHeader"] == row) & (df_long["ColumnHeader"] == col)]
+                if not match.empty:
+                    sample_rows.append(match.head(1))
+
+        balanced_sample_df = pd.concat(sample_rows)
+        sample_json = json.dumps(balanced_sample_df.to_dict(orient="records"), indent=2)
 
     # --- User Query Input ---
     user_query = st.text_input("Step 2: Enter prompts for each table (separated by `;`)")
