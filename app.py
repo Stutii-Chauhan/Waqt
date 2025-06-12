@@ -208,16 +208,13 @@ if uploaded_file:
                 continue
 
             if df_result.shape[1] == 3:
-                row_vals = df_long["RowHeader"].unique()
-                col_vals = df_long["ColumnHeader"].unique()
                 final_df = df_result.pivot(
                     index=df_result.columns[0],
                     columns=df_result.columns[1],
                     values=df_result.columns[2]
-                ).reindex(index=row_vals, columns=col_vals, fill_value="NA").reset_index()
+                ).reset_index()
             else:
                 final_df = df_result
-
 
             st.subheader("📅 Updated Excel Output")
             st.dataframe(final_df, use_container_width=True)
