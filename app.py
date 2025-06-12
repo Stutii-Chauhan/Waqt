@@ -58,15 +58,21 @@ if uploaded_file:
     df_long = df.melt(id_vars=[row_header], var_name="ColumnHeader", value_name="Value")
     df_long.rename(columns={row_header: "RowHeader"}, inplace=True)
 
-    # Ensure at least one sample row per ColumnHeader (to include all columns like Channel C)
-    column_sample = []
+    # Ensure at least one sample row for each (RowHeader, ColumnHeader) pair
+    sample_rows = []
     
-    for col in df_long["ColumnHeader"].unique():
-        sample_rows = df_long[df_long["ColumnHeader"] == col].head(1)
-        column_sample.append(sample_rows)
+    row_vals = df_long["RowHeader"].unique()
+    col_vals = df_long["ColumnHeader"].unique()
     
-    balanced_sample_df = pd.concat(column_sample)
+    for row in row_vals:
+        for col in col_vals:
+            match = df_long[(df_long["RowHeader"] == row) & (df_long["ColumnHeader"] == col)]
+            if not match.empty:
+                sample_rows.append(match.head(1))
+    
+    balanced_sample_df = pd.concat(sample_rows)
     sample_json = json.dumps(balanced_sample_df.to_dict(orient="records"), indent=2)
+
 
 
     # --- User Query Input ---
