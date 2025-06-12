@@ -134,85 +134,85 @@ if uploaded_file:
             st.error("Gemini returned invalid JSON. Please check prompt.")
             st.stop()
 
-        with st.spinner("Fetching aggregated data from Supabase..."):with st.spinner("Fetching aggregated data from Supabase..."):
-    filters = mapping.get("filters", {})
-    operation = mapping.get("operation", "sum").lower()
-
-    st.subheader("📌 Filters applied to SQL")
-    st.write(filters)
-
-    # --- Build Supabase query ---
-    query = supabase.table(mapping["table"]).select(
-        f"{mapping['row_header_column']}, {mapping['column_header_column']}, {mapping['value_column']}"
-    )
-
-    where_clauses = []
-    for key, val in filters.items():
-        query = query.eq(key, str(val).strip())
-        where_clauses.append(f"{key} = '{val}'")
-
-    # --- SQL Preview (informative only) ---
-    sql_preview = f"""
-SELECT {mapping['row_header_column']}, {mapping['column_header_column']}, {mapping['value_column']}
-FROM {mapping['table']}
-{f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""}
-"""
-    st.code(sql_preview, language="sql")
-
-    try:
-        result = query.execute()
-        result_df = pd.DataFrame(result.data)
-
-        st.subheader("📄 Raw Supabase Result (before groupby)")
-        st.dataframe(result_df.head(20))
-
-        # 🔍 Debug for 1 combination
-        target_row = mapping["row_header_column"]
-        target_col = mapping["column_header_column"]
-        target_val = mapping["value_column"]
-
-        debug_subset = result_df.query(f"{target_row} == 'East' and {target_col} == 'Channel A'")
-        st.subheader("🧪 Debug: Channel A + East Records")
-        st.dataframe(debug_subset)
-
-        if not debug_subset.empty:
-            st.write("✅ Row Count for East + Channel A:", len(debug_subset))
-            st.write("✅ Manual AVG:", pd.to_numeric(debug_subset[target_val], errors="coerce").mean())
-        else:
-            st.warning("⚠️ No records found for 'Channel A' and 'East' in result_df.")
-
-    except Exception as e:
-        st.error(f"Supabase query failed: {e}")
-        st.stop()
-
-    if result_df.empty:
-        st.warning("No matching data found in Supabase.")
-        st.stop()
-
-    # --- Group and Pivot ---
-    agg_func = "sum" if operation == "sum" else "mean"
-    updated_df = result_df.groupby(
-        [mapping["row_header_column"], mapping["column_header_column"]]
-    )[mapping["value_column"]].agg(agg_func).round(2).reset_index()
-
-    final_df = updated_df.pivot(
-        index=mapping["row_header_column"],
-        columns=mapping["column_header_column"],
-        values=mapping["value_column"]
-    ).reset_index()
-
-    st.subheader("📥 Updated Excel Output")
-    st.dataframe(final_df, use_container_width=True)
-
-    def to_excel_download(df):
-        output = BytesIO()
-        with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            df.to_excel(writer, index=False)
-        return output.getvalue()
-
-    st.download_button(
-        label="Download Updated Excel",
-        data=to_excel_download(final_df),
-        file_name="updated_sales.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
+        with st.spinner("Fetching aggregated data from Supabase..."):
+            filters = mapping.get("filters", {})
+            operation = mapping.get("operation", "sum").lower()
+        
+            st.subheader("📌 Filters applied to SQL")
+            st.write(filters)
+        
+            # --- Build Supabase query ---
+            query = supabase.table(mapping["table"]).select(
+                f"{mapping['row_header_column']}, {mapping['column_header_column']}, {mapping['value_column']}"
+            )
+        
+            where_clauses = []
+            for key, val in filters.items():
+                query = query.eq(key, str(val).strip())
+                where_clauses.append(f"{key} = '{val}'")
+        
+            # --- SQL Preview (informative only) ---
+            sql_preview = f"""
+        SELECT {mapping['row_header_column']}, {mapping['column_header_column']}, {mapping['value_column']}
+        FROM {mapping['table']}
+        {f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""}
+        """
+            st.code(sql_preview, language="sql")
+        
+            try:
+                result = query.execute()
+                result_df = pd.DataFrame(result.data)
+        
+                st.subheader("📄 Raw Supabase Result (before groupby)")
+                st.dataframe(result_df.head(20))
+        
+                # 🔍 Debug for 1 combination
+                target_row = mapping["row_header_column"]
+                target_col = mapping["column_header_column"]
+                target_val = mapping["value_column"]
+        
+                debug_subset = result_df.query(f"{target_row} == 'East' and {target_col} == 'Channel A'")
+                st.subheader("🧪 Debug: Channel A + East Records")
+                st.dataframe(debug_subset)
+        
+                if not debug_subset.empty:
+                    st.write("✅ Row Count for East + Channel A:", len(debug_subset))
+                    st.write("✅ Manual AVG:", pd.to_numeric(debug_subset[target_val], errors="coerce").mean())
+                else:
+                    st.warning("⚠️ No records found for 'Channel A' and 'East' in result_df.")
+        
+            except Exception as e:
+                st.error(f"Supabase query failed: {e}")
+                st.stop()
+        
+            if result_df.empty:
+                st.warning("No matching data found in Supabase.")
+                st.stop()
+        
+            # --- Group and Pivot ---
+            agg_func = "sum" if operation == "sum" else "mean"
+            updated_df = result_df.groupby(
+                [mapping["row_header_column"], mapping["column_header_column"]]
+            )[mapping["value_column"]].agg(agg_func).round(2).reset_index()
+        
+            final_df = updated_df.pivot(
+                index=mapping["row_header_column"],
+                columns=mapping["column_header_column"],
+                values=mapping["value_column"]
+            ).reset_index()
+        
+            st.subheader("📥 Updated Excel Output")
+            st.dataframe(final_df, use_container_width=True)
+        
+            def to_excel_download(df):
+                output = BytesIO()
+                with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                    df.to_excel(writer, index=False)
+                return output.getvalue()
+        
+            st.download_button(
+                label="Download Updated Excel",
+                data=to_excel_download(final_df),
+                file_name="updated_sales.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
