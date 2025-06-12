@@ -145,7 +145,13 @@ if uploaded_file:
 
         try:
             result = supabase.rpc("run_sql", {"query": sql_query}).execute()
-            result_df = pd.DataFrame(result.data)
+            raw_data = result.data
+            
+            if isinstance(raw_data, list) and "result" in raw_data[0]:
+                flattened_data = raw_data[0]["result"]
+                result_df = pd.DataFrame(flattened_data)
+            else:
+                result_df = pd.DataFrame(raw_data)
         except Exception as e:
             st.error(f"SQL execution failed: {e}")
             st.stop()
