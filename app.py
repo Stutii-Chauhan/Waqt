@@ -134,6 +134,10 @@ if uploaded_file:
             response = model.generate_content(prompt)
 
         sql_query = response.text.strip().strip("`").strip()
+        if sql_query.lower().startswith("sql"):
+            sql_query = sql_query[3:].strip()
+        sql_query = sql_query.rstrip(";")
+
 
         st.subheader("🧠 Gemini SQL Output")
         st.code(sql_query, language="sql")
