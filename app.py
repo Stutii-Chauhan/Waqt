@@ -15,7 +15,7 @@ SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
 
 if not SUPABASE_URL or not SUPABASE_KEY or not GEMINI_API_KEY:
-    st.error("❌ Missing Supabase or Gemini credentials.")
+    st.error("\u274c Missing Supabase or Gemini credentials.")
     st.stop()
 
 # --- Init Clients ---
@@ -24,15 +24,15 @@ genai.configure(api_key=GEMINI_API_KEY)
 model = genai.GenerativeModel("gemini-2.0-flash")
 
 # --- Title ---
-st.title("📊 Excel Auto-Updater for Waqt")
+st.title("\ud83d\udcca Excel Auto-Updater for Waqt")
 
 # --- Upload File ---
-uploaded_file = st.file_uploader("Step 1️⃣: Upload your Excel file", type=["xlsx"])
+uploaded_file = st.file_uploader("Step 1\ufe0f\ufe0f: Upload your Excel file", type=["xlsx"])
 
 if uploaded_file:
     sheets = pd.read_excel(uploaded_file, sheet_name=None)
     sheet_names = list(sheets.keys())
-    selected_sheet = st.selectbox("📑 Select a sheet to process", sheet_names)
+    selected_sheet = st.selectbox("\ud83d\udcc1 Select a sheet to process", sheet_names)
     df = sheets[selected_sheet]
 
     if df.empty:
@@ -48,24 +48,21 @@ if uploaded_file:
     row_header = df.columns[0]
     column_headers = df.columns[1:].tolist()
 
-    # --- Standardize values to title case ---
     for col in df.columns:
         if df[col].dtype == "object":
             df[col] = df[col].astype(str).str.title()
 
-    st.subheader(f"🔍 Preview: {selected_sheet}")
+    st.subheader(f"\ud83d\udd0d Preview: {selected_sheet}")
     st.dataframe(df.head(10), use_container_width=True)
 
-    # --- Melt the Excel into long format ---
     df_long = df.melt(id_vars=[row_header], var_name="ColumnHeader", value_name="Value")
     df_long.rename(columns={row_header: "RowHeader"}, inplace=True)
 
-    sample = df_long.head(5)
+    sample_csv = df_long.head(5).to_csv(index=False)
 
-    # --- Prompt Input ---
-    user_query = st.text_input("Step 2️⃣: What do you want to update or calculate in this sheet?")
+    user_query = st.text_input("Step 2\ufe0f\ufe0f: What do you want to update or calculate in this sheet?")
 
-    if user_query and st.button("🚀 Start"):
+    if user_query and st.button("\ud83d\ude80 Start"):
         column_info = {
             "brand": "Product's brand group (Group 1, Group 2, Group 3)",
             "product_gender": "Product gender (P, O, G, L, U)",
@@ -87,8 +84,6 @@ if uploaded_file:
             "qty_masked": "Units sold"
         }
         column_description_text = "\n".join([f"- {k}: {v}" for k, v in column_info.items()])
-
-        sample_csv = sample.to_csv(index=False)
 
         prompt = f"""
 You are a smart assistant that maps Excel structures to database tables or calculations.
@@ -117,25 +112,21 @@ Return JSON in this format:
 Only return a JSON object. Do NOT explain.
 """
 
-        with st.spinner("🤖 Sending structure + prompt to Gemini..."):
+        with st.spinner("\ud83e\uddd0 Sending structure + prompt to Gemini..."):
             response = model.generate_content(prompt)
 
         try:
             cleaned_json = re.sub(r"^```json|```$", "", response.text.strip(), flags=re.MULTILINE).strip()
             mapping = json.loads(cleaned_json)
-            st.success("✅ Gemini extracted the following logic:")
+            st.success("\u2705 Gemini extracted the following logic:")
             st.json(mapping)
         except Exception:
-            st.error("❌ Gemini returned invalid JSON. Please check prompt.")
+            st.error("\u274c Gemini returned invalid JSON. Please check prompt.")
             st.stop()
 
-        # --- Smart SQL Query Instead of fetch_value() ---
-        with st.spinner("🧮 Fetching aggregated data from Supabase..."):
+        with st.spinner("\ud83d\udcc8 Fetching aggregated data from Supabase..."):
             filters = mapping.get("filters", {})
             operation = mapping.get("operation", "sum").lower()
-
-            st.write("Excel RowHeader filter:", df[row_header].dropna().unique().tolist())
-            st.write("Excel ColumnHeader filter:", column_headers)
 
             row_values = [v.strip() for v in df[row_header].dropna().unique()]
             col_values = [v.strip() for v in column_headers]
@@ -150,10 +141,9 @@ Only return a JSON object. Do NOT explain.
             query = query.in_(mapping["row_header_column"], row_values)
             query = query.in_(mapping["column_header_column"], col_values)
 
-            # --- SQL Preview ---
             where_clauses = [f"{k} = '{v}'" for k, v in filters.items()]
-            where_clauses.append(f"{mapping['row_header_column']} IN ('{', '.join(row_values)}')")
-            where_clauses.append(f"{mapping['column_header_column']} IN ('{', '.join(col_values)}')")
+            where_clauses.append(f"{mapping['row_header_column']} IN ({', '.join([repr(v) for v in row_values])})")
+            where_clauses.append(f"{mapping['column_header_column']} IN ({', '.join([repr(v) for v in col_values])})")
 
             sql_preview = f"""
 SELECT {mapping['row_header_column']}, {mapping['column_header_column']}, {mapping['value_column']}
@@ -167,7 +157,7 @@ WHERE {' AND '.join(where_clauses)}
                 result_df = pd.DataFrame(result.data)
                 st.write("Raw Result from Supabase:", result_df)
             except Exception as e:
-                st.error(f"❌ Supabase query failed: {e}")
+                st.error(f"\u274c Supabase query failed: {e}")
                 st.stop()
 
             if result_df.empty:
@@ -185,10 +175,9 @@ WHERE {' AND '.join(where_clauses)}
                 values=mapping["value_column"]
             ).reset_index()
 
-        st.subheader("✅ Updated Excel")
+        st.subheader("\u2705 Updated Excel")
         st.dataframe(final_df, use_container_width=True)
 
-        # --- Download ---
         def to_excel_download(df):
             output = BytesIO()
             with pd.ExcelWriter(output, engine='openpyxl') as writer:
@@ -196,7 +185,7 @@ WHERE {' AND '.join(where_clauses)}
             return output.getvalue()
 
         st.download_button(
-            label="📥 Download Updated Excel",
+            label="\ud83d\udcc5 Download Updated Excel",
             data=to_excel_download(final_df),
             file_name="updated_sales.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
