@@ -71,6 +71,7 @@ if uploaded_file:
     "region": "Geographic region (North, East, South1 etc.)",
     "itemnumber": "SKU or item ID",
     "product_segment": "Watch category (Smart, Premium, Mainline Analog)",
+    "price_band": "Price range",
     "ucp_final": "Numerical price value",
     "bday_trans": "Was it a birthday campaign? (Y/N)",
     "anniv_trans": "Was it an anniversary campaign? (Y/N)",
