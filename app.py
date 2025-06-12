@@ -27,6 +27,7 @@ model = genai.GenerativeModel("gemini-2.0-flash")
 st.title("Excel Auto-Updater for Waqt")
 
 # --- Upload File ---
+# --- Upload File ---
 uploaded_file = st.file_uploader("Step 1: Upload your Excel file", type=["xlsx"])
 
 if uploaded_file:
@@ -51,7 +52,7 @@ if uploaded_file:
             continue
 
         # --- Auto-fix unnamed first column ---
-        if "unnamed" in table_df.columns[0].lower():
+        if isinstance(table_df.columns[0], str) and "unnamed" in table_df.columns[0].lower():
             table_df.columns.values[0] = "RowHeader"
         else:
             table_df.columns.values[0] = table_df.columns[0].title().replace(" ", "_")
@@ -82,6 +83,8 @@ if uploaded_file:
 
         balanced_sample_df = pd.concat(sample_rows)
         sample_json = json.dumps(balanced_sample_df.to_dict(orient="records"), indent=2)
+
+        # Store or use sample_json as needed per table
 
     # --- User Query Input ---
     user_query = st.text_input("Step 2: Enter prompts for each table (separated by `;`)")
