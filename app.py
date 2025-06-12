@@ -84,43 +84,33 @@ if uploaded_file:
             "qty_masked": "Units sold"
         }
         column_description_text = "\n".join([f"- {k}: {v}" for k, v in column_info.items()])
-     
-        prompt = f"""
-        You are a smart assistant that maps Excel templates to database queries using the table schema and Excel layout.
-        
-        📝 Instructions:
-        - The **first column** in the Excel template is always the row header (e.g., Region, Gender, etc.)
-        - The remaining columns are column headers (e.g., Channel, Month)
-        - The value to fetch from the database is usually `"value_masked"` unless the user asks for units (`qty_masked`) or price (`ucp_final`)
-        - If the user asks for a calculation (like average, sum, difference), extract that as the operation
-        - The default operation is `"sum"` if nothing is mentioned
-        - If filters like `"Region": "East"` or `"Product Segment": "Premium"` are mentioned in the user query, include them under `filters`
-        
-        🎯 Your job is to return only this JSON structure:
-        {{
-          "table": "toy_cleaned",
-          "row_header_column": "...",       ← from Excel first column (e.g., region)
-          "column_header_column": "...",    ← from other columns in Excel (e.g., channel)
-          "value_column": "...",            ← usually "value_masked"
-          "operation": "sum",               ← or "average", etc.
-          "filters": {{ ... }}              ← if any, based on the user's question
-        }}
-        
-        User Query:
-        {user_query}
-        
-        Excel Data (JSON preview):
-        {sample_json}
-        
-        Available table:
-        toy_cleaned
-        
-        Table schema:
-        {column_description_text}
-        
-        Only return the JSON. Do NOT explain anything.
-        """
 
+        prompt = f"""
+You are a smart assistant that maps Excel structures to database tables or calculations.
+
+User Query:
+{user_query}
+
+Excel Data (JSON preview):
+{sample_json}
+
+Available table:
+toy_cleaned
+
+Columns:
+{column_description_text}
+
+Return JSON in this format:
+{{
+  "table": "toy_cleaned",
+  "row_header_column": "...",
+  "column_header_column": "...",
+  "value_column": "...",
+  "operation": "sum",
+  "filters": {{ optional key-value filters like "Product Segment": "Premium" }}
+}}
+Only return a JSON object. Do NOT explain.
+"""
 
         with st.spinner("Sending structure + prompt to Gemini..."):
             response = model.generate_content(prompt)
@@ -136,80 +126,88 @@ if uploaded_file:
 
         with st.spinner("Fetching aggregated data from Supabase..."):
             filters = mapping.get("filters", {})
-            operation = mapping.get("operation", "sum").lower()
-        
             st.subheader("📌 Filters applied to SQL")
             st.write(filters)
-        
-            # --- Build Supabase query ---
+            operation = mapping.get("operation", "sum").lower()
+
+            row_values = [v.strip() for v in df[row_header].dropna().unique()]
+            col_values = [v.strip() for v in column_headers]
+            st.write("Row Header Values used in SQL:", row_values)
+            st.write("Column Header Values used in SQL:", col_values)
+
+
             query = supabase.table(mapping["table"]).select(
                 f"{mapping['row_header_column']}, {mapping['column_header_column']}, {mapping['value_column']}"
             )
-        
-            where_clauses = []
+
             for key, val in filters.items():
                 query = query.eq(key, str(val).strip())
-                where_clauses.append(f"{key} = '{val}'")
-        
-            # --- SQL Preview (informative only) ---
+
+            query = query.in_(mapping["row_header_column"], row_values)
+            query = query.in_(mapping["column_header_column"], col_values)
+
+            where_clauses = [f"{k} = '{v}'" for k, v in filters.items()]
+            where_clauses.append(f"{mapping['row_header_column']} IN ({', '.join([repr(v) for v in row_values])})")
+            where_clauses.append(f"{mapping['column_header_column']} IN ({', '.join([repr(v) for v in col_values])})")
+
             sql_preview = f"""
-        SELECT {mapping['row_header_column']}, {mapping['column_header_column']}, {mapping['value_column']}
-        FROM {mapping['table']}
-        {f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""}
-        """
+SELECT {mapping['row_header_column']}, {mapping['column_header_column']}, {mapping['value_column']}
+FROM {mapping['table']}
+WHERE {' AND '.join(where_clauses)}
+"""
             st.code(sql_preview, language="sql")
-        
+
             try:
                 result = query.execute()
                 result_df = pd.DataFrame(result.data)
-        
+            
                 st.subheader("📄 Raw Supabase Result (before groupby)")
                 st.dataframe(result_df.head(20))
-        
-                # 🔍 Debug for 1 combination
+            
+                # 🔍 Debug: check Gemini column mapping
                 target_row = mapping["row_header_column"]
                 target_col = mapping["column_header_column"]
                 target_val = mapping["value_column"]
-        
+            
                 debug_subset = result_df.query(f"{target_row} == 'East' and {target_col} == 'Channel A'")
+            
                 st.subheader("🧪 Debug: Channel A + East Records")
                 st.dataframe(debug_subset)
-        
+            
                 if not debug_subset.empty:
                     st.write("✅ Row Count for East + Channel A:", len(debug_subset))
                     st.write("✅ Manual AVG:", pd.to_numeric(debug_subset[target_val], errors="coerce").mean())
                 else:
                     st.warning("⚠️ No records found for 'Channel A' and 'East' in result_df.")
-        
+            
             except Exception as e:
                 st.error(f"Supabase query failed: {e}")
                 st.stop()
-        
+            
             if result_df.empty:
                 st.warning("No matching data found in Supabase.")
                 st.stop()
-        
-            # --- Group and Pivot ---
+            
             agg_func = "sum" if operation == "sum" else "mean"
             updated_df = result_df.groupby(
                 [mapping["row_header_column"], mapping["column_header_column"]]
             )[mapping["value_column"]].agg(agg_func).round(2).reset_index()
-        
+            
             final_df = updated_df.pivot(
                 index=mapping["row_header_column"],
                 columns=mapping["column_header_column"],
                 values=mapping["value_column"]
             ).reset_index()
-        
+            
             st.subheader("📥 Updated Excel Output")
             st.dataframe(final_df, use_container_width=True)
-        
+            
             def to_excel_download(df):
                 output = BytesIO()
                 with pd.ExcelWriter(output, engine='openpyxl') as writer:
                     df.to_excel(writer, index=False)
                 return output.getvalue()
-        
+            
             st.download_button(
                 label="Download Updated Excel",
                 data=to_excel_download(final_df),
