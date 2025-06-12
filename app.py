@@ -97,6 +97,7 @@ if uploaded_file:
         - Interpret the user's query
         - Detect the correct row, column, and value fields in the table `toy_cleaned`
         - Apply `WHERE` clauses to restrict only to the RowHeader and ColumnHeader values present in the Excel
+        - Do NOT use JOIN with VALUES. Instead, use simple WHERE ... IN (...) filtering based on the RowHeader and ColumnHeader values.
         - Return a 3-column result (RowHeader, ColumnHeader, Aggregated Value)
         - Write a SQL query using correct table and column names from schema
         
