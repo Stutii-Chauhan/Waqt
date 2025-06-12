@@ -88,30 +88,31 @@ if uploaded_file:
         prompt = f"""
         You are a PostgreSQL expert.
         
-        The user has uploaded an Excel template that was melted into a JSON structure where:
-        - `RowHeader` contains values to group by (e.g., regions, genders, years, etc.)
-        - `ColumnHeader` contains another grouping or breakdown (e.g., channels, segments, etc.)
-        - `Value` is the placeholder for values to be calculated (e.g., revenue, quantity, etc.)
+        The user has uploaded an Excel sheet that was converted to a long-form JSON structure where:
+        - `RowHeader` contains values from one categorical field (e.g., region, gender, etc.)
+        - `ColumnHeader` contains values from another categorical field (e.g., channel, segment, etc.)
+        - `Value` is empty, and the user has asked for it to be calculated (e.g., average revenue)
         
-        Your job is to:
+        Your job:
         - Interpret the user's query
-        - Identify the correct fields from the table `toy_cleaned` that correspond to RowHeader, ColumnHeader, and Value
-        - Write a SQL query that returns a 3-column result: RowHeader field, ColumnHeader field, aggregated value
+        - Detect the correct row, column, and value fields in the table `toy_cleaned`
+        - Apply `WHERE` clauses to restrict only to the RowHeader and ColumnHeader values present in the Excel
+        - Return a 3-column result (RowHeader, ColumnHeader, Aggregated Value)
+        - Write a SQL query using correct table and column names from schema
         
         User Query:
         {user_query}
         
-        Melted Excel Sample (JSON):
+        Excel JSON Preview:
         {sample_json}
         
-        Table: toy_cleaned
+        Available Table: toy_cleaned
         
         Schema (column names and descriptions):
         {column_description_text}
         
-        Output ONLY the SQL query. Do NOT explain anything.
+        Only return a SQL query. Do not explain anything.
         """
-
 
         with st.spinner("Sending structure + query to Gemini..."):
             response = model.generate_content(prompt)
