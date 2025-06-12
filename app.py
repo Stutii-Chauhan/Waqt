@@ -46,6 +46,7 @@ if uploaded_file:
         df.columns.values[0] = df.columns[0].title().replace(" ", "_")
 
     row_header = df.columns[0]
+    column_headers = df.columns[1:].tolist()
 
     # --- Standardize values to title case ---
     for col in df.columns:
@@ -87,9 +88,7 @@ if uploaded_file:
         }
         column_description_text = "\n".join([f"- {k}: {v}" for k, v in column_info.items()])
 
-        available_tables = """
-        toy_cleaned: [Region, Channel, Product Segment, Value_Masked, Qty_Masked, ...]
-        """
+        sample_csv = sample.to_csv(index=False)
 
         prompt = f"""
 You are a smart assistant that maps Excel structures to database tables or calculations.
@@ -98,7 +97,7 @@ User Query:
 {user_query}
 
 Excel DataFrame (melted format):
-{sample.to_csv(index=False)}
+{sample_csv}
 
 Available table:
 toy_cleaned
@@ -130,49 +129,46 @@ Only return a JSON object. Do NOT explain.
             st.error("❌ Gemini returned invalid JSON. Please check prompt.")
             st.stop()
 
-        # --- Query Supabase based on mapping ---
-        def fetch_value(row_val, col_val):
-            query = (
-                supabase.table(mapping["table"])
-                .select(mapping["value_column"])
-                .eq(mapping["row_header_column"], str(row_val).strip().title())
-                .eq(mapping["column_header_column"], str(col_val).strip().title())
+        # --- Smart SQL Query Instead of fetch_value() ---
+        with st.spinner("🧮 Fetching aggregated data from Supabase..."):
+            filters = mapping.get("filters", {})
+            operation = mapping.get("operation", "sum").lower()
+
+            query = supabase.table(mapping["table"]).select(
+                f"{mapping['row_header_column']}, {mapping['column_header_column']}, {mapping['value_column']}"
             )
-        
-            if "filters" in mapping:
-                for k, v in mapping["filters"].items():
-                    query = query.eq(k, str(v).strip().title())
-        
+
+            # Add filters from Gemini + Excel limits
+            for key, val in filters.items():
+                query = query.eq(key, str(val).strip().title())
+
+            query = query.in_(mapping["row_header_column"], df[row_header].dropna().unique().tolist())
+            query = query.in_(mapping["column_header_column"], column_headers)
+
             try:
-                res = query.execute()
+                result = query.execute()
+                result_df = pd.DataFrame(result.data)
             except Exception as e:
                 st.error(f"❌ Supabase query failed: {e}")
-                return None
-        
-            values = [r[mapping["value_column"]] for r in res.data] if res.data else []
-        
-            # Handle operation
-            operation = mapping.get("operation", "sum").lower()
-        
-            if operation == "sum":
-                return sum(values) if values else None
-            elif operation == "average":
-                return round(sum(values) / len(values), 2) if values else None
-            else:
-                # Placeholder for unsupported ops (to be handled in Step 3)
-                return None
+                st.stop()
 
+            if result_df.empty:
+                st.warning("No matching data found in Supabase.")
+                st.stop()
 
-        st.warning(f"📡 Querying table: {mapping['table']}")
+            agg_func = "sum" if operation == "sum" else "mean"
+            updated_df = result_df.groupby(
+                [mapping["row_header_column"], mapping["column_header_column"]]
+            )[mapping["value_column"]].agg(agg_func).round(2).reset_index()
 
-        df_long[mapping["value_column"]] = df_long.apply(
-            lambda row: fetch_value(row["RowHeader"], row["ColumnHeader"]), axis=1
-        )
-
-        updated_df = df_long.pivot(index="RowHeader", columns="ColumnHeader", values=mapping["value_column"]).reset_index()
+            final_df = updated_df.pivot(
+                index=mapping["row_header_column"],
+                columns=mapping["column_header_column"],
+                values=mapping["value_column"]
+            ).reset_index()
 
         st.subheader("✅ Updated Excel")
-        st.dataframe(updated_df, use_container_width=True)
+        st.dataframe(final_df, use_container_width=True)
 
         # --- Download ---
         def to_excel_download(df):
@@ -183,7 +179,7 @@ Only return a JSON object. Do NOT explain.
 
         st.download_button(
             label="📥 Download Updated Excel",
-            data=to_excel_download(updated_df),
+            data=to_excel_download(final_df),
             file_name="updated_sales.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
