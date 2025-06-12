@@ -86,23 +86,32 @@ if uploaded_file:
         column_description_text = "\n".join([f"- {k}: {v}" for k, v in column_info.items()])
 
         prompt = f"""
-You are a PostgreSQL expert.
+        You are a PostgreSQL expert.
+        
+        The user has uploaded an Excel template that was melted into a JSON structure where:
+        - `RowHeader` contains values to group by (e.g., regions, genders, years, etc.)
+        - `ColumnHeader` contains another grouping or breakdown (e.g., channels, segments, etc.)
+        - `Value` is the placeholder for values to be calculated (e.g., revenue, quantity, etc.)
+        
+        Your job is to:
+        - Interpret the user's query
+        - Identify the correct fields from the table `toy_cleaned` that correspond to RowHeader, ColumnHeader, and Value
+        - Write a SQL query that returns a 3-column result: RowHeader field, ColumnHeader field, aggregated value
+        
+        User Query:
+        {user_query}
+        
+        Melted Excel Sample (JSON):
+        {sample_json}
+        
+        Table: toy_cleaned
+        
+        Schema (column names and descriptions):
+        {column_description_text}
+        
+        Output ONLY the SQL query. Do NOT explain anything.
+        """
 
-Given the user query and the sample Excel structure (in JSON), generate a SQL query to get the required data from the table `toy_cleaned`.
-
-User Query:
-{user_query}
-
-Excel Data (JSON preview):
-{sample_json}
-
-Table: toy_cleaned
-
-Schema (column names and descriptions):
-{column_description_text}
-
-Output only the SQL query. Do NOT explain anything.
-"""
 
         with st.spinner("Sending structure + query to Gemini..."):
             response = model.generate_content(prompt)
