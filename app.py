@@ -67,11 +67,12 @@ if uploaded_file:
     table_blocks = split_dataframe_by_blank_rows(df_raw)
     table_dfs = []
 
-    with st.expander(f"📄 Uploaded Template - `{selected_sheet}`", expanded=False):
-        for idx, (start_row, block) in enumerate(table_blocks, start=1):
-            st.markdown(f"### 🔸 Raw Table {idx} (rows {start_row}–{start_row + len(block) - 1})")
-            st.dataframe(block.reset_index(drop=True), use_container_width=True)
-
+    st.subheader(f"📄 Uploaded Template - `{selected_sheet}`")
+    for idx, (start_row, block) in enumerate(table_blocks, start=1):
+        df_clean, _ = process_table(block)
+        table_dfs.append(df_clean)
+        st.markdown(f"### 🔸 Table {idx} (rows {start_row}–{start_row + len(block) - 1})")
+        st.dataframe(df_clean.head(10), use_container_width=True)
 
     
     # User prompts input
