@@ -27,7 +27,42 @@ model = genai.GenerativeModel("gemini-2.0-flash")
 st.title("Excel Auto-Updater for Waqt")
 
 # --- Upload File ---
+# --- Upload File ---
 uploaded_file = st.file_uploader("Step 1: Upload your Excel file", type=["xlsx"])
+
+def split_dataframe_by_blank_rows(df):
+    split_indices = df[df.isnull().all(axis=1)].index.tolist()
+    blocks = []
+    start_idx = 0
+
+    for idx in split_indices:
+        block = df.iloc[start_idx:idx]
+        if not block.dropna(how="all").empty:
+            blocks.append((start_idx, block.reset_index(drop=True)))
+        start_idx = idx + 1
+
+    if start_idx < len(df):
+        block = df.iloc[start_idx:]
+        if not block.dropna(how="all").empty:
+            blocks.append((start_idx, block.reset_index(drop=True)))
+
+    return blocks  # list of (start_row_index, df)
+
+
+def process_table(df_partial):
+    df_partial = df_partial.dropna(axis=1, how="all")
+    raw_headers = df_partial.iloc[0].fillna("Unnamed").astype(str).str.strip()
+    df_partial.columns = raw_headers
+    df_partial = df_partial[1:].reset_index(drop=True)
+
+    if df_partial.columns[0].lower() in ["", "unnamed", "nan", "none"]:
+        df_partial.columns = ["RowHeader"] + list(df_partial.columns[1:])
+
+    row_header = df_partial.columns[0]
+    df_long = df_partial.melt(id_vars=[row_header], var_name="ColumnHeader", value_name="Value")
+    df_long.rename(columns={row_header: "RowHeader"}, inplace=True)
+
+    return df_partial, df_long
 
 if uploaded_file:
     sheets = pd.read_excel(uploaded_file, sheet_name=None)
@@ -35,43 +70,17 @@ if uploaded_file:
     selected_sheet = st.selectbox("Select a sheet to process", sheet_names)
     df_raw = pd.read_excel(uploaded_file, sheet_name=selected_sheet, header=None)
 
-    # Detect blank rows and split into multiple tables
-    blank_rows = df_raw[df_raw.isnull().all(axis=1)].index.tolist()
-    table_starts = [0] + [i + 1 for i in blank_rows]
-    table_ends = blank_rows + [len(df_raw)]
+    table_blocks = split_dataframe_by_blank_rows(df_raw)
 
-    table_dfs = [
-        df_raw.iloc[start:end].dropna(how='all').reset_index(drop=True)
-        for start, end in zip(table_starts, table_ends)
-    ]
-
-    for i, table_df in enumerate(table_dfs, start=1):
+    for i, (start_row, table_df) in enumerate(table_blocks, start=1):
         if table_df.empty:
             st.warning(f"⚠️ Table {i} is empty. Skipping.")
             continue
 
-        # Set first row as header
-        table_df.columns = table_df.iloc[0]
-        table_df = table_df.drop(index=0).reset_index(drop=True)
-
-        # --- Auto-fix unnamed first column ---
-        if isinstance(table_df.columns[0], str) and "unnamed" in table_df.columns[0].lower():
-            table_df.columns.values[0] = "RowHeader"
-        else:
-            table_df.columns.values[0] = table_df.columns[0].title().replace(" ", "_")
-
-        row_header = table_df.columns[0]
-        column_headers = table_df.columns[1:].tolist()
-
-        for col in table_df.columns:
-            if table_df[col].dtype == "object":
-                table_df[col] = table_df[col].astype(str).str.title()
+        table_df, df_long = process_table(table_df)
 
         st.subheader(f"🔹 Preview: Table {i} from {selected_sheet}")
         st.dataframe(table_df.head(10), use_container_width=True)
-
-        df_long = table_df.melt(id_vars=[row_header], var_name="ColumnHeader", value_name="Value")
-        df_long.rename(columns={row_header: "RowHeader"}, inplace=True)
 
         # Ensure at least one sample row for each (RowHeader, ColumnHeader) pair
         sample_rows = []
@@ -86,6 +95,8 @@ if uploaded_file:
 
         balanced_sample_df = pd.concat(sample_rows)
         sample_json = json.dumps(balanced_sample_df.to_dict(orient="records"), indent=2)
+
+        # Store or use sample_json as needed per table
 
     # --- User Query Input ---
     user_query = st.text_input("Step 2: What do you want to update or calculate in this sheet?")
