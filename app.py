@@ -245,13 +245,26 @@ if uploaded_file:
             )
 
         # Combine all final tables with blank rows in between
-        merged_with_blanks = pd.DataFrame()
-        for df in final_outputs:
-            merged_with_blanks = pd.concat([merged_with_blanks, df, pd.DataFrame([[''] * len(df.columns)], columns=df.columns)], ignore_index=True)
-        if not merged_with_blanks.empty:
-            st.download_button(
-                label="⬇️ Download Combined Output",
-                data=to_excel_download(merged_with_blanks),
-                file_name="merged_output.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
+        from openpyxl import load_workbook
+        from openpyxl.utils.dataframe import dataframe_to_rows
+        
+        # --- write back into the original template ---
+        wb = load_workbook(uploaded_file)
+        ws = wb[selected_sheet]
+        
+        for (start_row, _), final_df in zip(table_blocks, final_outputs):
+            # write header + data
+            for r_idx, row in enumerate(dataframe_to_rows(final_df, index=False, header=True)):
+                for c_idx, val in enumerate(row):
+                    # +1 because openpyxl is 1-based, and start_row is 0-based
+                    ws.cell(row=start_row + r_idx + 1, column=c_idx + 1, value=val)
+        
+        # dump to bytes and offer download
+        buf = BytesIO()
+        wb.save(buf)
+        st.download_button(
+            "⬇️ Download Updated Excel (Original Layout)",
+            data=buf.getvalue(),
+            file_name=f"updated_{selected_sheet}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
