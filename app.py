@@ -66,7 +66,8 @@ if uploaded_file:
 
     table_blocks = split_dataframe_by_blank_rows(df_raw)
     table_dfs = []
-
+    all_final_outputs = []
+    
     st.subheader(f"📄 Uploaded Template - `{selected_sheet}`")
     for idx, (start_row, block) in enumerate(table_blocks, start=1):
         df_clean, _ = process_table(block)
@@ -225,6 +226,8 @@ if uploaded_file:
             else:
                 final_df = df_result
 
+            all_final_outputs.append(final_df)
+
             st.subheader("📅 Updated Excel Output")
             st.dataframe(final_df, use_container_width=True)
 
@@ -238,5 +241,34 @@ if uploaded_file:
                 label=f"Download Updated Table {i}",
                 data=to_excel_download(final_df),
                 file_name=f"updated_table_{i}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+
+        # After the for-loop ends
+        def merge_tables_with_blank_rows(tables):
+            merged = pd.DataFrame()
+            for df in tables:
+                merged = pd.concat(
+                    [merged, df, pd.DataFrame([[""] * df.shape[1]], columns=df.columns)],
+                    ignore_index=True
+                )
+            return merged
+
+        if all_final_outputs:
+            merged_output_df = merge_tables_with_blank_rows(all_final_outputs)
+
+            st.subheader("\U0001F4D8 Combined Excel Output (All Tables)")
+            st.dataframe(merged_output_df, use_container_width=True)
+
+            def to_combined_excel(df):
+                buffer = BytesIO()
+                with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+                    df.to_excel(writer, index=False)
+                return buffer.getvalue()
+
+            st.download_button(
+                label="📅 Download Combined Excel File",
+                data=to_combined_excel(merged_output_df),
+                file_name="merged_output.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
