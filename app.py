@@ -66,6 +66,7 @@ if uploaded_file:
 
     table_blocks = split_dataframe_by_blank_rows(df_raw)
     table_dfs = []
+    orig_headers_list = []
     final_outputs = []
     
     st.subheader(f"📄 Uploaded Template - `{selected_sheet}`")
