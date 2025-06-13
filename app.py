@@ -153,6 +153,14 @@ if uploaded_file:
             balanced_sample_df = pd.concat(sample_rows)
             sample_json = json.dumps(balanced_sample_df.to_dict(orient="records"), indent=2)
 
+            value_formatting_rules = """
+            Important Formatting Rules for Values:
+            - The column names in the database use lowercase underscore format, like `product_segment`, `ucp_final`, etc.
+            - However, the values inside columns (like 'Channel A', 'Group 1', 'Mainline Analog' etc.) should appear exactly as they are shown in the Excel — with spaces.
+            - DO NOT convert values like 'Channel A' to 'Channel_A' or 'Group 1' to 'Group_1'.
+            - Values inside `IN (...)` or `=` clauses must remain as original text.
+            """
+
             prompt = f"""
                 You are a PostgreSQL expert.
 
