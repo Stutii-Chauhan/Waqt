@@ -228,7 +228,7 @@ if uploaded_file:
 
             all_final_outputs.append(final_df)
 
-            st.subheader("📅 Updated Excel Output")
+            st.subheader("Updated Excel Output")
             st.dataframe(final_df, use_container_width=True)
 
             def to_excel_download(df):
@@ -257,8 +257,8 @@ if uploaded_file:
         if all_final_outputs:
             merged_output_df = merge_tables_with_blank_rows(all_final_outputs)
 
-            st.subheader("\U0001F4D8 Combined Excel Output (All Tables)")
-            st.dataframe(merged_output_df, use_container_width=True)
+            # st.subheader("\U0001F4D8 Combined Excel Output (All Tables)")
+            # st.dataframe(merged_output_df, use_container_width=True)
 
             def to_combined_excel(df):
                 buffer = BytesIO()
@@ -267,7 +267,7 @@ if uploaded_file:
                 return buffer.getvalue()
 
             st.download_button(
-                label="📅 Download Combined Excel File",
+                label="Download Updated Excel File",
                 data=to_combined_excel(merged_output_df),
                 file_name="merged_output.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
