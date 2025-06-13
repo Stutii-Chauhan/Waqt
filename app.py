@@ -93,6 +93,8 @@ if uploaded_file:
             df_clean, df_long = process_table(raw_block)
             table_dfs.append(df_clean)
 
+            orig_headers_list.append(df_clean.columns.tolist())
+            
             st.subheader(f"🔹 Preview: Table {i} from {selected_sheet} (rows {start_row}-{start_row + len(raw_block)-1})")
             st.dataframe(df_clean.head(10), use_container_width=True)
 
@@ -179,6 +181,7 @@ if uploaded_file:
                 - Write a SQL query using correct table and column names from schema
 
             {price_filtering_rules}
+            {value_formatting_rules}
 
             User Query:
             {prompt_text}
@@ -218,11 +221,30 @@ if uploaded_file:
                 continue
 
             if df_result.shape[1] == 3:
-                final_df = df_result.pivot(
+                # grab the headers the user originally uploaded for this table
+                orig = orig_headers_list[i-1]           # e.g. ["RowHeader","Smart","Premium"]
+            
+                # pivot the returned SQL
+                piv = df_result.pivot(
                     index=df_result.columns[0],
                     columns=df_result.columns[1],
                     values=df_result.columns[2]
-                ).reset_index()
+                )
+                # drop any accidental duplicates
+                piv = piv.loc[:, ~piv.columns.duplicated()]
+            
+                # ensure every original column is present
+                expected = orig[1:]                     # ["Smart","Premium"]
+                for col in expected:
+                    if col not in piv.columns:
+                        piv[col] = 0                    # or '' if you prefer blanks
+            
+                # reorder to match the template
+                piv = piv[expected]
+            
+                # reset index and restore original column names
+                final_df = piv.reset_index()
+                final_df.columns = orig
             else:
                 final_df = df_result
 
@@ -262,6 +284,11 @@ if uploaded_file:
         # dump to bytes and offer download
         buf = BytesIO()
         wb.save(buf)
+        buf.seek(0)
+        preview_df = pd.read_excel(buf, sheet_name=selected_sheet, header=None)
+        st.subheader("🔍 Preview: Updated Template")
+        st.dataframe(preview_df, use_container_width=True)
+        
         st.download_button(
             "⬇️ Download Updated Excel (Original Layout)",
             data=buf.getvalue(),
