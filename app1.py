@@ -100,25 +100,156 @@ if uploaded_file:
             st.dataframe(df_clean.head(10), use_container_width=True)
 
             column_info = {
-                "brand": "Product's brand group (Group 1, Group 2, Group 3)",
-                "product_gender": "Product gender (P, O, G, L, U)",
+                "productgroup": "Brand of the product (e.g., AI, RG, TF etc.)",
+                "product_gender": "Gender the product is designed for (G - Gents, L - Ladies, U - Unisex, P - Pair)",
+                "cluster": "Cluster code for internal brand groupings (e.g., LRAGA, LWKWR, GCLSQ etc.)",
+                "quantity": "Units sold in the transaction (integer)",
                 "billdate": "Date of transaction",
-                "channel": "Sales channel (Channel A, Channel B, Channel C)",
-                "region": "Geographic region (North, East, South1 etc.)",
-                "itemnumber": "SKU or item ID",
-                "product_segment": "Watch category (Smart, Premium, Mainline Analog)",
-                "ucp_final": "Numerical price value",
-                "bday_trans": "Was it a birthday campaign? (Y/N)",
-                "anniv_trans": "Was it an anniversary campaign? (Y/N)",
-                "customer_gender": "Customer's gender (Male, Female)",
-                "enc_ftd": "Customer's first transaction date",
-                "channel_ftd": "Date of First transaction on that channel",
-                "brand_ftd": "Date of First transaction with brand",
-                "customer_masked": "Masked customer ID",
-                "value_masked": "Transaction revenue",
-                "qty_masked": "Units sold"
+                "channel": "Sales channel (e.g., 1_TW, 2_FASTRACK, 4_MP, 6_HELIOS etc.)",
+                "region": "Geographic region (e.g., North, East, South1, West etc.)",
+                "raw_region": "Region used specifically for TW, Fastrack, and Helios analysis",
+                "tier": "City classification based on business priority (e.g., Metro, Tier 1, Tier 2 etc.)",
+                "financial_year": "Financial year of the transaction (e.g., FY23-24)",
+                "month_fy": "Month with fiscal year (e.g., Apr FY2425)",
+                "value": "Total transaction revenue in INR (numeric)",
+                "itemnumber": "Unique SKU or item code",
+                "latest_sku": "Parent SKU identifier for grouping variants",
+                "ucp_final": "Unit consumer price (selling price per item, numeric)",
+                "dealer_type": "Dealer classification for MBR (e.g., EMM, KAM)",
+                "platform": "Marketplace platform name (e.g., Amazon, Flipkart)",
+                "uid": "customer ID",
+                "product_segment": "Product segment (e.g., Smart, Premium, Mainline Analog)",
+                "bill_number": "Unique bill or invoice number",
+                "store_code": "Internal store identifier",
+                "city": "City where the transaction occurred",
+                "lfs_chain": "Chain code under LFS channel (e.g., SS, LS etc.)",
+                "rs_or_dd": "Dealer model type (RS, DD)",
+                "state": "State where the transaction occurred",
+                "ytd_tag": "Year-to-date tag for most recent transaction date",
+                "dob": "Customer's date of birth",
+                "anniversary": "Customer's anniversary date",
+                "bday_trans": "Was transaction during customer's birthday window? (Y/N)",
+                "anniv_trans": "Was transaction during anniversary window? (Y/N)",
+                "customer_gender": "Customer's gender (e.g., Male, Female, Other)"
             }
+            
             column_description_text = "\n".join([f"- {k}: {v}" for k, v in column_info.items()])
+
+            productgroup_definitions = """
+            Productgroup Brand Definitions:
+            
+            AK-Anne Klien
+            AP-APD Spares
+            BF-Fastrack Belts
+            BR-Tommy Hilfiger
+            BT-Titan Belts
+            CH-Coach
+            CL-Clock
+            CO-Components
+            EP-Epic Watches
+            ES-Espirit
+            FA-Fastrack Accessories
+            FB-Fastrack Straps
+            FC-FCUK
+            FD-Fastrack Tees
+            FE-Fastrack Hearables
+            FH-Fastrack Helmets
+            FM-Fastrack Tees
+            FP-Fastrack Fragrances
+            FQ-Fastrack Quarterlys
+            FS-Fastrack IGEAR
+            FT-Fastrack Watch
+            GC-Gift Card
+            GD-Fastrack Gold Bracelets
+            GP-Gift with Purchase
+            GV-Gift Voucher
+            HA-Helios Accessories
+            HB-Hugo Boss
+            HL-Helios
+            HR-Fastrack Hirsch Straps
+            KC-Kenneth Cole
+            LC-Lee Cooper
+            LF-Fastrack Ladies Bag
+            LI-Irth Ladies
+            MF-Fastrack Mens Bag
+            NE-Nebula
+            OB-Olivia Burton
+            PK-Packaging
+            PL-Police
+            SF-Sonata SuperFibre
+            SO-Sonata
+            TA-Taneira
+            TF-Titan Fragrances
+            TG-Titan Glares
+            TI-Titan Watch
+            TL-Titan Accessories
+            TM-Timberland
+            TQ-Traq Smart Watch
+            TR-T Mask
+            TX-Traq Watch (Band)
+            VM-Fidget Spinner
+            WE-Kenneth Cole Wellness Watch
+            WF-Fastrack Wallet
+            WK-Fastrack Wearables
+            WN-Titan Wearables
+            WS-Sonata Wearables
+            WT-Titan Wallet
+            XY-Xylys
+            ZP-Zoop
+            CE-Cerruti
+            AI-Aigner
+            RG-Raga
+            """
+
+            channel_filtering_rules = """
+            Channel Filtering Rules:
+            
+            - Use the `channel` column for all channel-based filtering.
+            - Valid channel codes and their meanings:
+            
+              - 1_TW         → Titan World stores
+              - 2_FASTRACK   → Fastrack stores
+              - 3_MBR_RS_adj → Multi-Brand Retail (Redistribution Stockist / Direct Dealer)
+              - 4_MP         → Online Marketplace (Amazon, Flipkart, etc.)
+              - 5_LFS        → Large Format Stores (Shoppers Stop, Lifestyle, etc.)
+              - 6_HELIOS     → Helios stores
+              - 7_TEC        → Titan Eye+ (TEC channel)
+            
+            - Always filter using exact channel codes, e.g., `channel = '2_FASTRACK'`
+            - Do not use general words like “offline”, “retail”, or “online” — always map them to actual codes.
+            
+            Examples:
+            - “Show me online sales” → `channel = '4_MP'`
+            - “Filter for Titan stores” → `channel = '1_TW'`
+            - “Only include Helios channel” → `channel = '6_HELIOS'`
+            
+            Important:
+            - Always check if user refers to channel indirectly (e.g., brand store, ecommerce, etc.)
+            - You may need to translate natural terms like “marketplace”, “offline retail” to the correct channel code
+            """
+
+            rs_or_dd_filtering_rules = """
+            RS or DD Filtering Rules:
+            
+            - Use the `rs_or_dd` column to filter based on dealer type for Multi-Brand Retail (MBR) channel.
+            - This field helps identify the type of dealer involved in the sale.
+            
+            Valid values:
+              - RS → Redistribution Stockist
+              - DD → Direct Dealer
+            
+            How to interpret:
+            - If the user says “Redistribution Stockist” or “RS”, filter as: `rs_or_dd = 'RS'`
+            - If the user says “Direct Dealer” or “DD”, filter as: `rs_or_dd = 'DD'`
+            
+            Important:
+            - This column is only relevant for channel `3_MBR_RS_adj` (Multi-Brand Retail).
+            - Do not use this field for other channels like `1_TW`, `2_FASTRACK`, etc.
+            - Always combine it with a channel filter if needed:
+              
+              Example:
+              - “Sales from direct dealers in MBR” → `channel = '3_MBR_RS_adj' AND rs_or_dd = 'DD'`
+            """
 
             price_filtering_rules = """
             Price Filtering Rules:
@@ -175,14 +306,18 @@ if uploaded_file:
 
                 Your job:
                 - Interpret the user's query
-                - Detect the correct row, column, and value fields in the table `toy_cleaned`
+                - Detect the correct row, column, and value fields in the table `watches_schema`
                 - Apply `WHERE` clauses to restrict only to the RowHeader and ColumnHeader values present in the Excel
                 - Do NOT use JOIN with VALUES. Instead, use simple WHERE ... IN (...) filtering based on the RowHeader and ColumnHeader values.
                 - Return a 3-column result (RowHeader, ColumnHeader, Aggregated Value)
                 - Write a SQL query using correct table and column names from schema
 
+            {productgroup_definitions}
+            {channel_filtering_rules}
+            {rs_or_dd_filtering_rules}
             {price_filtering_rules}
             {value_formatting_rules}
+            
 
             User Query:
             {prompt_text}
