@@ -199,6 +199,12 @@ if uploaded_file:
             CE-Cerruti
             AI-Aigner
             RG-Raga
+
+
+            - Always filter using exact productgroup codes, e.g., 'productgroup = 'AI' etc.'
+
+            Example: 
+            - "Sales for Zoop" → `productgroup = 'ZP' etc.`
             """
 
             channel_filtering_rules = """
@@ -313,9 +319,7 @@ if uploaded_file:
             - Avoid repeating mappings or writing verbose logic
             - Only return SQL. No markdown or explanation.
 
-            {productgroup_definitions} 
-            Use only the productgroup codes (eg. AI, FB, RG etc.) when writing SQL filters.
-            
+            {productgroup_definitions}          
             {channel_filtering_rules}
             {rs_or_dd_filtering_rules}
             {price_filtering_rules}
