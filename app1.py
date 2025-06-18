@@ -215,7 +215,7 @@ if uploaded_file:
               - 6_HELIOS     → Helios stores
               - 7_TEC        → Titan Eye+ (TEC channel)
             
-            - Always filter using exact channel codes, e.g., `channel = '2_FASTRACK'`
+            - Always filter using exact channel codes, e.g., `channel = '2_FASTRACK' etc.`
             - Do not use general words like “offline”, “retail”, or “online” — always map them to actual codes.
             
             Examples:
@@ -314,7 +314,7 @@ if uploaded_file:
             - Only return SQL. No markdown or explanation.
 
             {productgroup_definitions} 
-            Use only the codes (e.g., 'RG' for Raga) when writing SQL filters.
+            Use only the productgroup codes (eg. AI, FB, RG etc.) when writing SQL filters.
             
             {channel_filtering_rules}
             {rs_or_dd_filtering_rules}
