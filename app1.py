@@ -295,22 +295,23 @@ if uploaded_file:
             - DO NOT convert values like 'Channel A' to 'Channel_A' or 'Group 1' to 'Group_1'.
             - Values inside `IN (...)` or `=` clauses must remain as original text.
             """
-
             prompt = f"""
-                You are a PostgreSQL expert.
-
-                The user has uploaded an Excel sheet that was converted to a long-form JSON structure where:
-                - `RowHeader` contains values from one categorical field (e.g., region, gender, etc.)
-                - `ColumnHeader` contains values from another categorical field (e.g., channel, segment, etc.)
-                - `Value` is empty, and the user has asked for it to be calculated (e.g., average revenue)
-
-                Your job:
-                - Interpret the user's query
-                - Detect the correct row, column, and value fields in the table `watches_schema`
-                - Apply `WHERE` clauses to restrict only to the RowHeader and ColumnHeader values present in the Excel
-                - Do NOT use JOIN with VALUES. Instead, use simple WHERE ... IN (...) filtering based on the RowHeader and ColumnHeader values.
-                - Return a 3-column result (RowHeader, ColumnHeader, Aggregated Value)
-                - Write a SQL query using correct table and column names from schema
+            You are a PostgreSQL expert.
+            
+            The user has uploaded an Excel sheet that was converted to a long-form JSON structure where:
+            - `RowHeader` contains values from one categorical field (e.g., region, gender, product_group)
+            - `ColumnHeader` contains values from another categorical field (e.g., channel, segment, etc.)
+            - `Value` is empty, and the user has asked for it to be calculated (e.g., average revenue)
+            
+            Your job:
+            - Understand the user query and select the correct table: `watches_schema`
+            - Identify which fields map to RowHeader, ColumnHeader, and Value
+            - Apply clean WHERE ... IN (...) filters for only the visible RowHeader and ColumnHeader values (do not use hardcoded CASE or VALUES joins)
+            - Use simple aggregation like SUM(), AVG(), etc.
+            - Return a pivot-friendly result with 3 columns: RowHeader, ColumnHeader, AggregatedValue
+            - Do not alias with redundant names
+            - Avoid repeating mappings or writing verbose logic
+            - Only return SQL. No markdown or explanation.
 
             {productgroup_definitions}
             {channel_filtering_rules}
