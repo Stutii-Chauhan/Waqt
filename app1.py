@@ -313,7 +313,9 @@ if uploaded_file:
             - Avoid repeating mappings or writing verbose logic
             - Only return SQL. No markdown or explanation.
 
-            {productgroup_definitions}
+            {productgroup_definitions} 
+            Use only the codes (e.g., 'RG' for Raga) when writing SQL filters.
+            
             {channel_filtering_rules}
             {rs_or_dd_filtering_rules}
             {price_filtering_rules}
