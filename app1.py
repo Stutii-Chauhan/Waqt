@@ -257,6 +257,12 @@ if uploaded_file:
               - “Sales from direct dealers in MBR” → `channel = '3_MBR_RS_adj' AND rs_or_dd = 'DD'`
             """
 
+            cluster_column_definition = """
+            Cluster:
+            - Use the `cluster` column to filter internal product group clusters (e.g., LRAGA, LWKWR, GCLSQ).
+            - These are not brand names, but backend groupings. Example: `cluster = 'LRAGA'`
+            """
+            
             price_filtering_rules = """
             Price Filtering Rules:
 
@@ -322,6 +328,7 @@ if uploaded_file:
             {productgroup_definitions}          
             {channel_filtering_rules}
             {rs_or_dd_filtering_rules}
+            {cluster_column_definition}
             {price_filtering_rules}
             {value_formatting_rules}
             
