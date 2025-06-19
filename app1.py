@@ -280,6 +280,15 @@ if uploaded_file:
             - Apply filters using: `ucp_final BETWEEN ...`, `ucp_final < ...`, or `ucp_final > ...` — never as strings.
             """
 
+            generic_rules = """
+            
+            Gender based rules:
+            - customer_gender = buyer's gender
+            - product_gender = gender the product is made for
+            Use customer_gender if the question refers to customers or buyers. If the user query is about customer behavior (e.g., "sales for male/ male customers"), use `customer_gender`.
+            Use product_gender if it refers to product types like men's watches. If the query is about product types (e.g., "sales of men's watches"), use `product_gender`.
+            """
+            
             # Ensure headers are clean
             headers = df_clean.columns.str.strip().str.replace(" ", "_")
             df_clean.columns = headers
@@ -329,6 +338,7 @@ if uploaded_file:
             {channel_filtering_rules}
             {rs_or_dd_filtering_rules}
             {cluster_column_definition}
+            {generic_rules}
             {price_filtering_rules}
             {value_formatting_rules}
             
