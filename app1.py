@@ -329,7 +329,7 @@ if uploaded_file:
             You are a PostgreSQL expert.
             
             The user has uploaded an Excel sheet that was converted to a long-form JSON structure where:
-            - `RowHeader` contains values from one categorical field (e.g., region, gender, product_group)
+            - `RowHeader` contains values from one categorical field (e.g., region, gender, productgroup)
             - `ColumnHeader` contains values from another categorical field (e.g., channel, segment, etc.)
             - `Value` is empty, and the user has asked for it to be calculated (e.g., average revenue)
             
@@ -337,6 +337,7 @@ if uploaded_file:
             - Understand the user query and select the correct table: `watches_schema`
             - Identify which fields map to RowHeader, ColumnHeader, and Value
             - Apply clean WHERE ... IN (...) filters for only the visible RowHeader and ColumnHeader values (do not use hardcoded CASE or VALUES joins)
+            - If the RowHeader or ColumnHeader values are brand names (e.g., Lee Cooper, Sonata, Raga etc.), convert them to their productgroup codes (e.g., LC, SO, RG etc.) before filtering. Use only `productgroup` in WHERE clause.
             - Use simple aggregation like SUM(), AVG(), etc.
             - Return a pivot-friendly result with 3 columns: RowHeader, ColumnHeader, AggregatedValue
             - Do not alias with redundant names
