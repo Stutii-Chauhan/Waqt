@@ -1,7 +1,10 @@
 streamlit
 pandas
 openpyxl
-supabase
-python-dotenv
 google-generativeai
-tabulate
+langchain
+faiss-cpu
+tiktoken
+python-dotenv
+supabase
+sqlalchemy
