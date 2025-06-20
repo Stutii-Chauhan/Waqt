@@ -2,7 +2,7 @@ streamlit
 pandas
 openpyxl
 google-generativeai
-langchain
+langchain>=0.1.13
 faiss-cpu
 tiktoken
 python-dotenv
