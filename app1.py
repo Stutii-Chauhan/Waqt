@@ -136,75 +136,84 @@ if uploaded_file:
             column_description_text = "\n".join([f"- {k}: {v}" for k, v in column_info.items()])
 
             productgroup_definitions = """
-            Productgroup Brand Definitions:
+            PRODUCTGROUP CODE RULES (MUST FOLLOW)
             
-            AK-Anne Klien
-            AP-APD Spares
-            BF-Fastrack Belts
-            BR-Tommy Hilfiger
-            BT-Titan Belts
-            CH-Coach
-            CL-Clock
-            CO-Components
-            EP-Epic Watches
-            ES-Espirit
-            FA-Fastrack Accessories
-            FB-Fastrack Straps
-            FC-FCUK
-            FD-Fastrack Tees
-            FE-Fastrack Hearables
-            FH-Fastrack Helmets
-            FM-Fastrack Tees
-            FP-Fastrack Fragrances
-            FQ-Fastrack Quarterlys
-            FS-Fastrack IGEAR
-            FT-Fastrack Watch
-            GC-Gift Card
-            GD-Fastrack Gold Bracelets
-            GP-Gift with Purchase
-            GV-Gift Voucher
-            HA-Helios Accessories
-            HB-Hugo Boss
-            HL-Helios
-            HR-Fastrack Hirsch Straps
-            KC-Kenneth Cole
-            LC-Lee Cooper
-            LF-Fastrack Ladies Bag
-            LI-Irth Ladies
-            MF-Fastrack Mens Bag
-            NE-Nebula
-            OB-Olivia Burton
-            PK-Packaging
-            PL-Police
-            SF-Sonata SuperFibre
-            SO-Sonata
-            TA-Taneira
-            TF-Titan Fragrances
-            TG-Titan Glares
-            TI-Titan Watch
-            TL-Titan Accessories
-            TM-Timberland
-            TQ-Traq Smart Watch
-            TR-T Mask
-            TX-Traq Watch (Band)
-            VM-Fidget Spinner
-            WE-Kenneth Cole Wellness Watch
-            WF-Fastrack Wallet
-            WK-Fastrack Wearables
-            WN-Titan Wearables
-            WS-Sonata Wearables
-            WT-Titan Wallet
-            XY-Xylys
-            ZP-Zoop
-            CE-Cerruti
-            AI-Aigner
-            RG-Raga
-
-
-            - Always filter using exact productgroup codes, e.g., 'productgroup = 'AI' etc.'
-
-            Example: 
-            - "Sales for Zoop" → `productgroup = 'ZP' etc.`
+            Use only productgroup **codes**, not brand names. The `productgroup` column contains 2-letter codes representing each brand.
+            
+            🧾 Brand to Productgroup Code Mapping:
+            
+            - AK → Anne Klien
+            - AP → APD Spares
+            - BF → Fastrack Belts
+            - BR → Tommy Hilfiger
+            - BT → Titan Belts
+            - CH → Coach
+            - CL → Clock
+            - CO → Components
+            - EP → Epic Watches
+            - ES → Espirit
+            - FA → Fastrack Accessories
+            - FB → Fastrack Straps
+            - FC → FCUK
+            - FD → Fastrack Tees
+            - FE → Fastrack Hearables
+            - FH → Fastrack Helmets
+            - FM → Fastrack Tees
+            - FP → Fastrack Fragrances
+            - FQ → Fastrack Quarterlys
+            - FS → Fastrack IGEAR
+            - FT → Fastrack Watch
+            - GC → Gift Card
+            - GD → Fastrack Gold Bracelets
+            - GP → Gift with Purchase
+            - GV → Gift Voucher
+            - HA → Helios Accessories
+            - HB → Hugo Boss
+            - HL → Helios
+            - HR → Fastrack Hirsch Straps
+            - KC → Kenneth Cole
+            - LC → Lee Cooper
+            - LF → Fastrack Ladies Bag
+            - LI → Irth Ladies
+            - MF → Fastrack Mens Bag
+            - NE → Nebula
+            - OB → Olivia Burton
+            - PK → Packaging
+            - PL → Police
+            - SF → Sonata SuperFibre
+            - SO → Sonata
+            - TA → Taneira
+            - TF → Titan Fragrances
+            - TG → Titan Glares
+            - TI → Titan Watch
+            - TL → Titan Accessories
+            - TM → Timberland
+            - TQ → Traq Smart Watch
+            - TR → T Mask
+            - TX → Traq Watch (Band)
+            - VM → Fidget Spinner
+            - WE → Kenneth Cole Wellness Watch
+            - WF → Fastrack Wallet
+            - WK → Fastrack Wearables
+            - WN → Titan Wearables
+            - WS → Sonata Wearables
+            - WT → Titan Wallet
+            - XY → Xylys
+            - ZP → Zoop
+            - CE → Cerruti
+            - AI → Aigner
+            - RG → Raga
+            
+            🛑 Do NOT use brand names like 'Titan', 'Coach', or 'Zoop' directly in SQL.
+            ✅ Instead, always convert to the correct code using:
+                WHERE productgroup = 'TI'
+            
+            📌 Examples:
+            - “Sales for Zoop” → `productgroup = 'ZP'`
+            - “Titan Watch average sales” → `productgroup = 'TI'`
+            - “Raga vs Sonata performance” → `productgroup IN ('RG', 'SO')`
+            
+            If the user mentions a **brand name**, always map it to its corresponding productgroup **code**.
             """
 
             channel_filtering_rules = """
