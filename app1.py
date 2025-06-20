@@ -5,12 +5,6 @@ from supabase import create_client
 import google.generativeai as genai
 import json
 import re
-from langchain.embeddings import GoogleGenerativeAIEmbeddings
-from langchain.vectorstores import FAISS
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.document_loaders import TextLoader
-import os
-
 
 # --- Config ---
 st.set_page_config(page_title="Excel Auto-Updater for Waqt", layout="wide")
@@ -32,31 +26,6 @@ model = genai.GenerativeModel("gemini-2.0-flash")
 # --- Title ---
 st.title("Excel Auto-Updater for Waqt")
 
-
-def load_knowledge_base():
-    splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
-    docs = []
-
-    for filename in os.listdir("knowledge_base"):
-        if filename.endswith(".md"):
-            loader = TextLoader(os.path.join("knowledge_base", filename))
-            docs.extend(splitter.split_documents(loader.load()))
-
-    embedding = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
-    vectorstore = FAISS.from_documents(docs, embedding)
-    return vectorstore.as_retriever()
-
-def retrieve_rules(prompt_text: str, retriever):
-    retrieved_docs = retriever.get_relevant_documents(prompt_text)
-    retrieved_knowledge = "\n\n".join([doc.page_content for doc in retrieved_docs])
-    
-    # Fallback if context is too weak
-    if len(retrieved_knowledge.strip()) < 150:
-        st.warning("⚠️ Not enough relevant context found. Please rephrase your query.")
-        st.stop()
-
-    return retrieved_knowledge
-    
 # --- Helper Functions ---
 def split_dataframe_by_blank_rows(df):
     split_indices = df[df.isnull().all(axis=1)].index.tolist()
@@ -102,8 +71,8 @@ if uploaded_file:
     
     st.subheader(f"📄 Uploaded Template - `{selected_sheet}`")
     for idx, (start_row, block) in enumerate(table_blocks, start=1):
-        df_clean, df_long = process_table(block)
-        table_dfs.append((df_clean, df_long))
+        df_clean, _ = process_table(block)
+        table_dfs.append(df_clean)
         st.markdown(f"### 🔸 Table {idx} (rows {start_row}–{start_row + len(block) - 1})")
         st.dataframe(df_clean.head(10), use_container_width=True)
 
@@ -120,11 +89,10 @@ if uploaded_file:
         if len(prompts) != len(table_blocks):
             st.error(f"🚩 You entered {len(prompts)} prompt(s) for {len(table_blocks)} table(s). Please match the count.")
             st.stop()
-        retriever = load_knowledge_base()
 
         for i, ((start_row, raw_block), prompt_text) in enumerate(zip(table_blocks, prompts), start=1):
             df_clean, df_long = process_table(raw_block)
-            table_dfs.append((df_clean, df_long))
+            table_dfs.append(df_clean)
 
             orig_headers_list.append(df_clean.columns.tolist())
             
@@ -167,7 +135,160 @@ if uploaded_file:
             
             column_description_text = "\n".join([f"- {k}: {v}" for k, v in column_info.items()])
 
-                     
+            productgroup_definitions = """
+            Productgroup Brand Definitions:
+            
+            AK-Anne Klien
+            AP-APD Spares
+            BF-Fastrack Belts
+            BR-Tommy Hilfiger
+            BT-Titan Belts
+            CH-Coach
+            CL-Clock
+            CO-Components
+            EP-Epic Watches
+            ES-Espirit
+            FA-Fastrack Accessories
+            FB-Fastrack Straps
+            FC-FCUK
+            FD-Fastrack Tees
+            FE-Fastrack Hearables
+            FH-Fastrack Helmets
+            FM-Fastrack Tees
+            FP-Fastrack Fragrances
+            FQ-Fastrack Quarterlys
+            FS-Fastrack IGEAR
+            FT-Fastrack Watch
+            GC-Gift Card
+            GD-Fastrack Gold Bracelets
+            GP-Gift with Purchase
+            GV-Gift Voucher
+            HA-Helios Accessories
+            HB-Hugo Boss
+            HL-Helios
+            HR-Fastrack Hirsch Straps
+            KC-Kenneth Cole
+            LC-Lee Cooper
+            LF-Fastrack Ladies Bag
+            LI-Irth Ladies
+            MF-Fastrack Mens Bag
+            NE-Nebula
+            OB-Olivia Burton
+            PK-Packaging
+            PL-Police
+            SF-Sonata SuperFibre
+            SO-Sonata
+            TA-Taneira
+            TF-Titan Fragrances
+            TG-Titan Glares
+            TI-Titan Watch
+            TL-Titan Accessories
+            TM-Timberland
+            TQ-Traq Smart Watch
+            TR-T Mask
+            TX-Traq Watch (Band)
+            VM-Fidget Spinner
+            WE-Kenneth Cole Wellness Watch
+            WF-Fastrack Wallet
+            WK-Fastrack Wearables
+            WN-Titan Wearables
+            WS-Sonata Wearables
+            WT-Titan Wallet
+            XY-Xylys
+            ZP-Zoop
+            CE-Cerruti
+            AI-Aigner
+            RG-Raga
+
+
+            - Always filter using exact productgroup codes, e.g., 'productgroup = 'AI' etc.'
+
+            Example: 
+            - "Sales for Zoop" → `productgroup = 'ZP' etc.`
+            """
+
+            channel_filtering_rules = """
+            Channel Filtering Rules:
+            
+            - Use the `channel` column for all channel-based filtering.
+            - Valid channel codes and their meanings:
+            
+              - 1_TW         → Titan World stores
+              - 2_FASTRACK   → Fastrack stores
+              - 3_MBR_RS_adj → Multi-Brand Retail (Redistribution Stockist / Direct Dealer)
+              - 4_MP         → Online Marketplace (Amazon, Flipkart, etc.)
+              - 5_LFS        → Large Format Stores (Shoppers Stop, Lifestyle, etc.)
+              - 6_HELIOS     → Helios stores
+              - 7_TEC        → Titan Eye+ (TEC channel)
+            
+            - Always filter using exact channel codes, e.g., `channel = '2_FASTRACK' etc.`
+            - Do not use general words like “offline”, “retail”, or “online” — always map them to actual codes.
+            
+            Examples:
+            - “Show me online sales” → `channel = '4_MP'`
+            - “Filter for Titan stores” → `channel = '1_TW'`
+            - “Only include Helios channel” → `channel = '6_HELIOS'`
+            
+            Important:
+            - Always check if user refers to channel indirectly (e.g., brand store, ecommerce, etc.)
+            - You may need to translate natural terms like “marketplace”, “offline retail” to the correct channel code
+            """
+
+            rs_or_dd_filtering_rules = """
+            RS or DD Filtering Rules:
+            
+            - Use the `rs_or_dd` column to filter based on dealer type for Multi-Brand Retail (MBR) channel.
+            - This field helps identify the type of dealer involved in the sale.
+            
+            Valid values:
+              - RS → Redistribution Stockist
+              - DD → Direct Dealer
+            
+            How to interpret:
+            - If the user says “Redistribution Stockist” or “RS”, filter as: `rs_or_dd = 'RS'`
+            - If the user says “Direct Dealer” or “DD”, filter as: `rs_or_dd = 'DD'`
+            
+            Important:
+            - This column is only relevant for channel `3_MBR_RS_adj` (Multi-Brand Retail).
+            - Do not use this field for other channels like `1_TW`, `2_FASTRACK`, etc.
+            - Always combine it with a channel filter if needed:
+              
+              Example:
+              - “Sales from direct dealers in MBR” → `channel = '3_MBR_RS_adj' AND rs_or_dd = 'DD'`
+            """
+
+            cluster_column_definition = """
+            Cluster:
+            - Use the `cluster` column to filter internal product group clusters (e.g., LRAGA, LWKWR, GCLSQ).
+            - These are not brand names, but backend groupings. Example: `cluster = 'LRAGA'`
+            """
+            
+            price_filtering_rules = """
+            Price Filtering Rules:
+
+            - Always use the numeric `ucp_final` column.
+            - Convert shorthand like “10k”, “25K” to numeric values (e.g., 10k = 10000).
+            - If the user mentions a price range (e.g., “10k–12k”), write: `ucp_final BETWEEN 10000 AND 12000`.
+            - If the user says “below 12000”, “under 12k”, write: `ucp_final < 12000`.
+            - If the user says “above 25000”, “more than 25k”, write: `ucp_final > 25000`.
+            - Handle user typos like “10k -12k”, “10k – 12k”, “10 k to 12 k” as valid ranges.
+            - Never use `ucp_final = '10K–12K'` or any string literal comparison for price.
+
+            Important:
+            - All price-related filtering must be done using the numeric `ucp_final` column only.
+            - Convert “10k”, “25K”, etc. to thousands: 10k = 10000.
+            - Apply filters using: `ucp_final BETWEEN ...`, `ucp_final < ...`, or `ucp_final > ...` — never as strings.
+            """
+
+            generic_rules = """
+            
+            Gender based rules:
+            - customer_gender = buyer's gender
+            - product_gender = gender the product is made for
+            Use customer_gender if the question refers to customers or buyers. If the user query is about customer behavior (e.g., "sales for male/ male customers"), use `customer_gender`.
+            Use product_gender if it refers to product types like men's watches. If the query is about product types (e.g., "sales of men's watches"), use `product_gender`.
+            """
+            
             # Ensure headers are clean
             headers = df_clean.columns.str.strip().str.replace(" ", "_")
             df_clean.columns = headers
@@ -188,36 +309,51 @@ if uploaded_file:
             balanced_sample_df = pd.concat(sample_rows)
             sample_json = json.dumps(balanced_sample_df.to_dict(orient="records"), indent=2)
 
-            retrieved_knowledge = retrieve_rules(prompt_text, retriever)
-            
+            value_formatting_rules = """
+            Important Formatting Rules for Values:
+            - The column names in the database use lowercase underscore format, like `product_segment`, `ucp_final`, etc.
+            - However, the values inside columns (like 'Channel A', 'Group 1', 'Mainline Analog' etc.) should appear exactly as they are shown in the Excel — with spaces.
+            - DO NOT convert values like 'Channel A' to 'Channel_A' or 'Group 1' to 'Group_1'.
+            - Values inside `IN (...)` or `=` clauses must remain as original text.
+            """
             prompt = f"""
             You are a PostgreSQL expert.
             
             The user has uploaded an Excel sheet that was converted to a long-form JSON structure where:
-            - `RowHeader` contains values from one categorical field (e.g., region, gender, productgroup)
+            - `RowHeader` contains values from one categorical field (e.g., region, gender, product_group)
             - `ColumnHeader` contains values from another categorical field (e.g., channel, segment, etc.)
-            - `Value` is empty and needs to be calculated
+            - `Value` is empty, and the user has asked for it to be calculated (e.g., average revenue)
             
-            ### Context from Knowledge Base:
-            {retrieved_knowledge}
-            
-            ### User Query:
-            {prompt_text}
-            
-            ### Excel JSON Preview:
-            {sample_json}
-            
-            ### Schema:
-            {column_description_text}
-            
-            ### Instructions:
-            - Use table: watches_schema
-            - Apply filters only using the visible RowHeader and ColumnHeader values
-            - Use SUM(), AVG(), COUNT() as needed
-            - Return only SQL with three columns: RowHeader, ColumnHeader, AggregatedValue
-            - No explanation. No markdown.
-            """
+            Your job:
+            - Understand the user query and select the correct table: `watches_schema`
+            - Identify which fields map to RowHeader, ColumnHeader, and Value
+            - Apply clean WHERE ... IN (...) filters for only the visible RowHeader and ColumnHeader values (do not use hardcoded CASE or VALUES joins)
+            - Use simple aggregation like SUM(), AVG(), etc.
+            - Return a pivot-friendly result with 3 columns: RowHeader, ColumnHeader, AggregatedValue
+            - Do not alias with redundant names
+            - Avoid repeating mappings or writing verbose logic
+            - Only return SQL. No markdown or explanation.
 
+            {productgroup_definitions}          
+            {channel_filtering_rules}
+            {rs_or_dd_filtering_rules}
+            {cluster_column_definition}
+            {generic_rules}
+            {price_filtering_rules}
+            {value_formatting_rules}
+            
+
+            User Query:
+            {prompt_text}
+
+            Excel JSON Preview:
+            {sample_json}
+
+            Schema:
+            {column_description_text}
+
+            Only return a SQL query. Do not explain anything.
+            """
 
             with st.spinner("Sending to Gemini..."):
                 response = model.generate_content(prompt)
@@ -232,7 +368,7 @@ if uploaded_file:
             try:
                 result = supabase.rpc("run_sql", {"query": sql_query}).execute()
                 raw_data = result.data
-                if isinstance(raw_data, list) and raw_data and "result" in raw_data[0]:
+                if isinstance(raw_data, list) and "result" in raw_data[0]:
                     df_result = pd.DataFrame(raw_data[0]["result"])
                 else:
                     df_result = pd.DataFrame(raw_data)
